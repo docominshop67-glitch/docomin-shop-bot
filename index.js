@@ -596,6 +596,22 @@ const commands = [
         .addStringOption(opt => opt.setName('code').setDescription('โค้ดคูปองที่ต้องการตรวจสอบ').setRequired(true)),
 
     new SlashCommandBuilder()
+        .setName('coupon-list')
+        .setDescription('ดูรายการโค้ดคูปองส่วนลดทั้งหมดของร้านค้า (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('coupon-delete')
+        .setDescription('ลบคูปองส่วนลดออกจากระบบ (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(opt => opt.setName('code').setDescription('ชื่อโค้ดคูปองที่ต้องการลบ').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('sales-summary')
+        .setDescription('ดูรายงานสรุปยอดขาย รายได้รวม ออเดอร์ และสินค้าขายดี (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
         .setName('restock-alert')
         .setDescription('ประกาศแจ้งเตือนสต็อกสินค้าเข้าใหม่ให้สมาชิกทราบ (Admin)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -857,6 +873,33 @@ client.on('interactionCreate', async interaction => {
                     components: [actionBtns]
                 });
 
+                // ส่งการ์ดชำระเงินและ QR Code พร้อมเพย์ทันที เพื่อความสะดวกสูงสุดของลูกค้า
+                const products = db.getProducts(interaction.guildId);
+                const itemQuery = (itemName || '').trim().toLowerCase();
+                const foundProduct = products.find(p => 
+                    p.id.toLowerCase() === itemQuery ||
+                    p.name.toLowerCase().includes(itemQuery) ||
+                    itemQuery.includes(p.name.toLowerCase()) ||
+                    (itemQuery.includes('ไก่ตัน') && p.name.includes('ไก่ตัน')) ||
+                    (itemQuery.includes('kitsune') && p.name.toLowerCase().includes('kitsune')) ||
+                    (itemQuery.includes('dragon') && p.name.toLowerCase().includes('dragon')) ||
+                    (itemQuery.includes('dough') && p.name.toLowerCase().includes('dough'))
+                );
+
+                const qty = parseInt(quantity) || 1;
+                const calculatedAmount = foundProduct && foundProduct.price ? foundProduct.price * qty : null;
+                const payEmbed = docominShop.createPaymentEmbed(
+                    interaction.guildId,
+                    calculatedAmount,
+                    `คำสั่งซื้อ: ${itemName} (x${qty})`
+                );
+                const payRow = docominShop.createPaymentActionRow(ticketChannel.id);
+                await ticketChannel.send({
+                    content: '💳 **ช่องทางการชำระเงินสำหรับคำสั่งซื้อของคุณ:**',
+                    embeds: [payEmbed],
+                    components: [payRow]
+                });
+
                 return interaction.editReply({ content: `✅ สร้างห้องตั๋วสั่งซื้อสำเร็จ! ไปที่ห้อง: <#${ticketChannel.id}>` });
             } catch (err) {
                 console.error(err);
@@ -1096,8 +1139,9 @@ client.on('interactionCreate', async interaction => {
             }
 
             // ส่งข้อมูลเข้า DM ของลูกค้า
+            let buyer = null;
             try {
-                const buyer = await interaction.client.users.fetch(ticket.userId);
+                buyer = await interaction.client.users.fetch(ticket.userId);
                 if (buyer) {
                     await buyer.send({
                         content: `🎉 สินค้าที่คุณสั่งซื้อจาก **Docomin Shop** ได้รับการจัดส่งแล้ว!`,
@@ -1109,13 +1153,130 @@ client.on('interactionCreate', async interaction => {
                 console.log('DM to customer failed (DMs closed):', dmErr.message);
             }
 
+            // ตัดสต็อกสินค้าอัตโนมัติ (Auto Stock Deduction)
+            const products = db.getProducts(interaction.guildId);
+            const itemQuery = (ticket.itemName || '').trim().toLowerCase();
+            const foundProduct = products.find(p => 
+                p.id.toLowerCase() === itemQuery ||
+                p.name.toLowerCase().includes(itemQuery) ||
+                itemQuery.includes(p.name.toLowerCase()) ||
+                (itemQuery.includes('ไก่ตัน') && p.name.includes('ไก่ตัน')) ||
+                (itemQuery.includes('kitsune') && p.name.toLowerCase().includes('kitsune')) ||
+                (itemQuery.includes('dragon') && p.name.toLowerCase().includes('dragon')) ||
+                (itemQuery.includes('dough') && p.name.toLowerCase().includes('dough'))
+            );
+
+            const qty = parseInt(ticket.quantity) || 1;
+            let finalStock = null;
+            if (foundProduct) {
+                finalStock = Math.max(0, (foundProduct.stock || 0) - qty);
+                db.updateProductStock(interaction.guildId, foundProduct.id, finalStock);
+                if (finalStock === 0 && targetChannel) {
+                    await targetChannel.send(`⚠️ **แจ้งเตือนสต็อกสินค้า:** สินค้า **${foundProduct.name}** (\`${foundProduct.id}\`) สต็อกหมดแล้ว! ทีมงานสามารถใช้ \`/product-stock\` หรือ \`/restock-alert\` เพื่อเติมสต็อก`).catch(() => {});
+                }
+            }
+
+            // บันทึกยอดขายลงในระบบบัญชีและการวิเคราะห์ (Sales Analytics Recording)
+            const originalAmount = ticket.originalAmount || (foundProduct ? foundProduct.price * qty : 150);
+            const finalAmount = ticket.netAmount !== undefined ? ticket.netAmount : originalAmount;
+            db.recordSale(interaction.guildId, {
+                orderId: channelId,
+                customerId: ticket.userId,
+                customerTag: buyer ? buyer.tag : 'Customer',
+                productId: foundProduct ? foundProduct.id : null,
+                productName: ticket.itemName || 'สินค้า',
+                quantity: qty,
+                originalAmount,
+                amount: finalAmount,
+                discount: ticket.discount || 0,
+                couponCode: ticket.couponCode || null,
+                adminId: interaction.user.id,
+                adminTag: interaction.user.tag
+            });
+
             // ปรับสถานะตั๋วเป็นสำเร็จ
             ticket.status = 'completed';
             ticket.completedAt = Date.now();
             ticket.deliveredBy = interaction.user.id;
+            ticket.finalAmount = finalAmount;
             db.setOrderTicket(channelId, ticket);
 
-            return interaction.editReply('✅ ส่งมอบสินค้าให้ลูกค้าเรียบร้อยแล้ว ทั้งในตั๋วและ DM!');
+            return interaction.editReply('✅ ส่งมอบสินค้าให้ลูกค้าเรียบร้อยแล้ว ทั้งในตั๋วและ DM พร้อมตัดสต็อกและบันทึกยอดขายอัตโนมัติ!');
+        }
+
+        if (interaction.customId.startsWith('modal_apply_coupon_')) {
+            await interaction.deferReply();
+            const channelId = interaction.customId.replace('modal_apply_coupon_', '');
+            const code = interaction.fields.getTextInputValue('coupon_code').trim().toUpperCase();
+
+            const ticket = db.getOrderTicket(channelId);
+            if (!ticket) {
+                return interaction.editReply('❌ ไม่พบข้อมูลตั๋วคำสั่งซื้อนี้');
+            }
+
+            const coupon = db.getCoupon(interaction.guildId, code);
+            if (!coupon) {
+                return interaction.editReply(`❌ ไม่พบโค้ดคูปอง **"${code}"** ในระบบ หรือโค้ดหมดอายุแล้ว`);
+            }
+
+            if (coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) {
+                return interaction.editReply(`❌ โค้ดคูปอง **"${code}"** ถูกใช้งานจนครบสิทธิ์แล้ว`);
+            }
+
+            if (coupon.users && coupon.users.includes(interaction.user.id)) {
+                return interaction.editReply(`❌ คุณเคยใช้โค้ดคูปอง **"${code}"** ไปแล้ว`);
+            }
+
+            // คำนวณราคาเริ่มต้น
+            const products = db.getProducts(interaction.guildId);
+            const itemQuery = (ticket.itemName || '').trim().toLowerCase();
+            const foundProduct = products.find(p => 
+                p.id.toLowerCase() === itemQuery ||
+                p.name.toLowerCase().includes(itemQuery) ||
+                itemQuery.includes(p.name.toLowerCase()) ||
+                (itemQuery.includes('ไก่ตัน') && p.name.includes('ไก่ตัน')) ||
+                (itemQuery.includes('kitsune') && p.name.toLowerCase().includes('kitsune')) ||
+                (itemQuery.includes('dragon') && p.name.toLowerCase().includes('dragon')) ||
+                (itemQuery.includes('dough') && p.name.toLowerCase().includes('dough'))
+            );
+
+            const qty = parseInt(ticket.quantity) || 1;
+            const originalPrice = foundProduct && foundProduct.price ? foundProduct.price * qty : 150;
+
+            if (coupon.minSpend > 0 && originalPrice < coupon.minSpend) {
+                return interaction.editReply(`❌ คูปองนี้ใช้ได้เมื่อมียอดสั่งซื้อขั้นต่ำ **฿${coupon.minSpend.toLocaleString()} บาท** (ยอดปัจจุบัน: ฿${originalPrice.toLocaleString()} บาท)`);
+            }
+
+            let discount = 0;
+            if (coupon.type === 'percent') {
+                discount = Math.round((originalPrice * coupon.discount) / 100);
+            } else {
+                discount = Math.min(originalPrice, coupon.discount);
+            }
+
+            const netAmount = Math.max(0, originalPrice - discount);
+
+            ticket.originalAmount = originalPrice;
+            ticket.discount = discount;
+            ticket.netAmount = netAmount;
+            ticket.couponCode = coupon.code;
+            db.setOrderTicket(channelId, ticket);
+            db.useCoupon(interaction.guildId, coupon.code, interaction.user.id);
+
+            const newPaymentEmbed = docominShop.createPaymentEmbed(
+                interaction.guildId,
+                netAmount,
+                `คำสั่งซื้อ: ${ticket.itemName} (x${qty})\n🎟️ ใช้คูปองส่วนลด: \`${coupon.code}\` (-฿${discount.toLocaleString()} บาท)`
+            );
+            const row = docominShop.createPaymentActionRow(channelId);
+
+            await interaction.channel.send({
+                content: `🎉 <@${interaction.user.id}> ใช้งานคูปอง **${coupon.code}** สำเร็จ! ได้รับส่วนลด **฿${discount.toLocaleString()}** บาท ยอดชำระสุทธิใหม่: **฿${netAmount.toLocaleString()}** บาท`,
+                embeds: [newPaymentEmbed],
+                components: [row]
+            });
+
+            return interaction.editReply(`✅ ใช้งานคูปอง **${coupon.code}** เรียบร้อยแล้ว! ปรับยอดยอดชำระสุทธิเป็น **฿${netAmount.toLocaleString()}** บาท`);
         }
 
         if (interaction.customId.startsWith('modal_vouch_submit_')) {
@@ -1210,6 +1371,13 @@ client.on('interactionCreate', async interaction => {
                     .setFooter({ text: 'Docomin Shop Management' });
 
                 return interaction.reply({ embeds: [shopEmbed], ephemeral: true });
+            }
+
+            if (section === 'section_sales') {
+                const stats = db.getSalesAnalytics(interaction.guildId);
+                const vouchStats = db.getVouchStats(client.user.id);
+                const embed = docominShop.createSalesSummaryEmbed(stats, vouchStats);
+                return interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
             if (section === 'section_moderation') {
@@ -2967,6 +3135,53 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: [embed], ephemeral: true });
         }
 
+        if (commandName === 'coupon-list') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะดูรายการคูปองได้', ephemeral: true });
+            }
+            const coupons = db.getCoupons(interaction.guildId);
+            if (coupons.length === 0) {
+                return interaction.reply({ content: 'ℹ️ ยังไม่มีการสร้างโค้ดคูปองส่วนลดในระบบ (ใช้คำสั่ง `/coupon-create` เพื่อสร้าง)', ephemeral: true });
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle(`🎟️ รายการคูปองส่วนลดทั้งหมด — Docomin Shop (${coupons.length} รายการ)`)
+                .setDescription('รายชื่อโค้ดคูปองส่วนลดที่ใช้งานได้ในเซิร์ฟเวอร์')
+                .setTimestamp();
+
+            coupons.forEach((c, idx) => {
+                const discountDisplay = c.type === 'percent' ? `${c.discount}%` : `฿${c.discount} บาท`;
+                const maxUsesDisplay = c.maxUses === 0 ? 'ไม่จำกัด' : `${c.usedCount || 0}/${c.maxUses} สิทธิ์`;
+                embed.addFields({
+                    name: `${idx + 1}. โค้ด: \`${c.code}\``,
+                    value: `• **ส่วนลด:** \`${discountDisplay}\`\n• **ขั้นต่ำ:** \`฿${(c.minSpend || 0).toLocaleString()} บาท\`\n• **สิทธิ์:** \`${maxUsesDisplay}\``,
+                    inline: true
+                });
+            });
+
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        if (commandName === 'coupon-delete') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะลบคูปองได้', ephemeral: true });
+            }
+            const code = interaction.options.getString('code');
+            const ok = db.deleteCoupon(interaction.guildId, code);
+            return interaction.reply(ok ? `✅ ลบโค้ดคูปองส่วนลด **${code.toUpperCase()}** ออกจากระบบเรียบร้อยแล้ว!` : `❌ ไม่พบโค้ดคูปอง **${code.toUpperCase()}** ในระบบ`);
+        }
+
+        if (commandName === 'sales-summary') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะดูรายงานยอดขายได้', ephemeral: true });
+            }
+            const stats = db.getSalesAnalytics(interaction.guildId);
+            const vouchStats = db.getVouchStats(interaction.client.user.id);
+            const embed = docominShop.createSalesSummaryEmbed(stats, vouchStats);
+            return interaction.reply({ embeds: [embed] });
+        }
+
         // --- Restock Alert Broadcast ---
         if (commandName === 'restock-alert') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -3492,6 +3707,11 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
+        if (customId.startsWith('btn_pay_coupon_') || customId === 'btn_pay_coupon') {
+            const channelId = customId.replace('btn_pay_coupon_', '') || interaction.channelId;
+            return interaction.showModal(docominShop.createApplyCouponModal(channelId));
+        }
+
         if (customId.startsWith('btn_pay_truemoney_angpao')) {
             return interaction.showModal(docominShop.createAngpaoModal());
         }
@@ -3565,12 +3785,64 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (customId.startsWith('btn_ticket_close_')) {
-            db.closeOrderTicket(interaction.channelId);
-            await interaction.reply('🔒 กำลังปิดตั๋วและจะลบห้องนี้ในอีก 5 วินาที...');
+            const channelId = customId.replace('btn_ticket_close_', '') || interaction.channelId;
+            const ticket = db.getOrderTicket(channelId);
+            db.closeOrderTicket(channelId);
+
+            await interaction.reply('🔒 กำลังปิดตั๋ว ส่ง Transcript สรุปการสั่งซื้อ และจะลบห้องนี้ในอีก 5 วินาที...');
+
+            try {
+                const fetched = await interaction.channel.messages.fetch({ limit: 100 });
+                const sorted = Array.from(fetched.values()).reverse();
+                let transcript = `=====================================================\n`;
+                transcript += `DOCOMIN SHOP TICKET TRANSCRIPT & RECEIPT\n`;
+                transcript += `Ticket Channel: #${interaction.channel.name} (${interaction.channel.id})\n`;
+                transcript += `Customer ID: ${ticket ? ticket.userId : 'Unknown'}\n`;
+                transcript += `Date: ${new Date().toISOString()}\n`;
+                transcript += `=====================================================\n\n`;
+
+                for (const m of sorted) {
+                    const time = new Date(m.createdTimestamp).toLocaleString('th-TH');
+                    transcript += `[${time}] ${m.author.tag}: ${m.cleanContent || (m.embeds.length ? '[Embed Card]' : '')}\n`;
+                }
+
+                const buffer = Buffer.from(transcript, 'utf-8');
+                const fileName = `transcript-${interaction.channel.name}.txt`;
+
+                // ส่งเข้า DM ของลูกค้า
+                if (ticket && ticket.userId) {
+                    try {
+                        const customerUser = await interaction.client.users.fetch(ticket.userId);
+                        if (customerUser) {
+                            await customerUser.send({
+                                content: `📄 **สรุปบันทึกการสั่งซื้อ (Transcript) จาก Docomin Shop**\nขอบคุณที่ใช้บริการกับเราครับ! คุณสามารถเปิดไฟล์นี้เพื่อดูประวัติการสนทนาและหลักฐานการสั่งซื้อได้ตลอดเวลา ❤️`,
+                                files: [{ attachment: buffer, name: fileName }]
+                            });
+                        }
+                    } catch (dmE) {
+                        // ignore closed DMs
+                    }
+                }
+
+                // ส่งสำเนาเข้าห้อง Log ของเซิร์ฟเวอร์ถ้ามี
+                const logChannelId = db.getSetting('logs_' + interaction.guildId);
+                if (logChannelId) {
+                    const logCh = interaction.guild.channels.cache.get(logChannelId);
+                    if (logCh && logCh.isTextBased()) {
+                        await logCh.send({
+                            content: `📁 **เก็บบันทึกประวัติตั๋วที่ปิดแล้ว:** \`#${interaction.channel.name}\``,
+                            files: [{ attachment: buffer, name: fileName }]
+                        }).catch(() => {});
+                    }
+                }
+            } catch (trErr) {
+                console.error('Transcript auto-send error:', trErr.message);
+            }
+
             setTimeout(async () => {
-                const ch = interaction.guild.channels.cache.get(interaction.channelId);
+                const ch = interaction.guild.channels.cache.get(channelId);
                 if (ch) {
-                    await ch.delete('Order Ticket Closed').catch(() => {});
+                    await ch.delete('Order Ticket Closed & Archived').catch(() => {});
                 }
             }, 5000);
             return;

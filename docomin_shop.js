@@ -1247,6 +1247,49 @@ module.exports = {
     createTicketActionButtons,
 
     // 1-Click Shop Setup
-    runSetupDocominShop
+    runSetupDocominShop,
+
+    // Store Promotion & Broadcast
+    createBroadcastEmbed,
+    createBroadcastActionRow
 };
+
+// Store Promotion & Broadcast
+function createBroadcastEmbed(options) {
+    const { title, description, couponCode, imageUrl, author } = options;
+    const embed = new EmbedBuilder()
+        .setColor(0xFF4500)
+        .setTitle(`📢 ${title || 'ประกาศโปรโมชั่นพิเศษ — Docomin Shop'}`)
+        .setDescription(description || 'พบกับข้อเสนอสุดพิเศษและสินค้าพร้อมส่งราคาสุดคุ้ม!')
+        .setFooter({ text: `ประกาศโดย: ${author ? author.tag : 'ทีมงาน Docomin Shop'} • ร้านค้าเปิด 24/7` })
+        .setTimestamp();
+
+    if (couponCode) {
+        embed.addFields({
+            name: '🎟️ โค้ดคูปองส่วนลดพิเศษ',
+            value: `\`\`\`fix\n${couponCode.toUpperCase()}\n\`\`\`\n*(นำโค้ดนี้ไปกรอกในห้องตั๋วเพื่อรับส่วนลดทันที)*`,
+            inline: false
+        });
+    }
+
+    if (imageUrl) {
+        embed.setImage(imageUrl);
+    }
+
+    return embed;
+}
+
+function createBroadcastActionRow() {
+    const buyBtn = new ButtonBuilder()
+        .setCustomId('btn_order_buy')
+        .setLabel('🛒 เปิดตั๋วสั่งซื้อทันที')
+        .setStyle(ButtonStyle.Success);
+
+    const catalogBtn = new ButtonBuilder()
+        .setCustomId('btn_shop_catalog_open')
+        .setLabel('📦 แคตตาล็อกสินค้า')
+        .setStyle(ButtonStyle.Primary);
+
+    return new ActionRowBuilder().addComponents(buyBtn, catalogBtn);
+}
 

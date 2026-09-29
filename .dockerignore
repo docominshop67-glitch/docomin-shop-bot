@@ -1,0 +1,12 @@
+# Secrets and build artifacts (guarded by bot-deploy)
+.env
+.env.*
+.git
+node_modules
+__pycache__
+Dockerfile
+README.md
+*.exe
+*.vsix
+bot-deploy-mcp
+index.backup.js

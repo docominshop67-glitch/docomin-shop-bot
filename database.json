@@ -1,0 +1,304 @@
+{
+  "users": {},
+  "settings": {},
+  "tickets": {},
+  "giveaways": {},
+  "uptimeUrls": [],
+  "warnings": {},
+  "levels": {},
+  "afk": {},
+  "bloxfruitsAlerts": {
+    "1281573363080364033": [
+      "gas",
+      "kitsune",
+      "dragon",
+      "leopard",
+      "dough",
+      "trex",
+      "control"
+    ]
+  },
+  "bloxfruitsChannels": {},
+  "automod": {},
+  "voiceMaster": {},
+  "tempVoices": {},
+  "verification": {},
+  "shop": {},
+  "vouches": [
+    {
+      "id": "vouch_1790686255372_phloj",
+      "sellerId": "1505076024478797904",
+      "buyerId": "1281573363080364033",
+      "buyerTag": "daring_otter_56502",
+      "guildId": "1534160645665067150",
+      "stars": 5,
+      "comment": "ส่งไวมากกกก",
+      "item": "ไก่ตัน",
+      "proofUrl": null,
+      "timestamp": 1790686255438
+    }
+  ],
+  "products": {
+    "1501461933424119878": {
+      "BF-KIT-P": {
+        "id": "BF-KIT-P",
+        "name": "Kitsune ถาวร (Permanent Kitsune)",
+        "price": 890,
+        "category": "blox_fruits",
+        "stock": 5,
+        "description": "ผลคิซึเนะถาวร ส่งมอบผ่านการเทรดในเกมทันที การันตีของแท้ 100%",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/kitsune.png",
+        "createdAt": 1727500000000
+      },
+      "BF-DRG-P": {
+        "id": "BF-DRG-P",
+        "name": "Dragon ถาวร (Permanent Dragon)",
+        "price": 850,
+        "category": "blox_fruits",
+        "stock": 3,
+        "description": "ผลมังกรถาวร รอรีเวิร์กสุดอลังการ ส่งมอบทันที",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/dragon.png",
+        "createdAt": 1727500000000
+      },
+      "BF-LEO-P": {
+        "id": "BF-LEO-P",
+        "name": "Leopard ถาวร (Permanent Leopard)",
+        "price": 650,
+        "category": "blox_fruits",
+        "stock": 8,
+        "description": "ผลเสือดาวถาวร ความเร็วและพลังโจมตีระดับท็อป",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/leopard.png",
+        "createdAt": 1727500000000
+      },
+      "BF-DOU-P": {
+        "id": "BF-DOU-P",
+        "name": "Dough ถาวร (Permanent Dough)",
+        "price": 550,
+        "category": "blox_fruits",
+        "stock": 10,
+        "description": "ผลโมจิถาวร คอมโบโหดอันดับ 1 สำหรับสาย PvP",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/dough.png",
+        "createdAt": 1727500000000
+      },
+      "BF-BUD-P": {
+        "id": "BF-BUD-P",
+        "name": "Buddha ถาวร (Permanent Buddha)",
+        "price": 390,
+        "category": "blox_fruits",
+        "stock": 15,
+        "description": "ผลพระถาวร ที่สุดของการฟาร์มเวลและลงดันเจี้ยน",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/buddha.png",
+        "createdAt": 1727500000000
+      },
+      "BF-ACC-GOD": {
+        "id": "BF-ACC-GOD",
+        "name": "ไอดีไก่ตัน หมัดก็อดฮิวแมน + ดาบคู่โอเด้ง (Godhuman + CDK)",
+        "price": 150,
+        "category": "blox_fruits",
+        "stock": 20,
+        "description": "ไอดีเลเวลตัน 2550 + หมัด Godhuman + ดาบคู่ Cursed Dual Katana + มีผลตื่นพร้อมเล่น สะอาด ไม่ยืนยันอีเมล",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/808/808665.png",
+        "createdAt": 1727500000000
+      },
+      "ROBUX-1000": {
+        "id": "ROBUX-1000",
+        "name": "1,000 Robux (เรท 1:3.5)",
+        "price": 285,
+        "category": "robux",
+        "stock": 50,
+        "description": "1,000 Robux ขาวสะอาด ปลอดภัย ไม่เสี่ยงโดนแบน ส่งผ่านระบบ Gamepass/Group Payout",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/2153/2153090.png",
+        "createdAt": 1727500000000
+      },
+      "NITRO-1M": {
+        "id": "NITRO-1M",
+        "name": "Discord Nitro Boost (1 เดือน)",
+        "price": 120,
+        "category": "nitro",
+        "stock": 25,
+        "description": "Discord Nitro Full พร้อม 2 เซิร์ฟเวอร์บูสต์ ส่งเป็น Gift Link แท้ 100%",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/5968/5968756.png",
+        "createdAt": 1727500000000
+      }
+    },
+    "1534160645665067150": {
+      "BF-KIT-P": {
+        "id": "BF-KIT-P",
+        "name": "Kitsune ถาวร (Permanent Kitsune)",
+        "price": 890,
+        "category": "blox_fruits",
+        "stock": 5,
+        "description": "ผลคิซึเนะถาวร ส่งมอบผ่านการเทรดในเกมทันที การันตีของแท้ 100%",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/kitsune.png",
+        "createdAt": 1727500000000
+      },
+      "BF-DRG-P": {
+        "id": "BF-DRG-P",
+        "name": "Dragon ถาวร (Permanent Dragon)",
+        "price": 850,
+        "category": "blox_fruits",
+        "stock": 3,
+        "description": "ผลมังกรถาวร รอรีเวิร์กสุดอลังการ ส่งมอบทันที",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/dragon.png",
+        "createdAt": 1727500000000
+      },
+      "BF-LEO-P": {
+        "id": "BF-LEO-P",
+        "name": "Leopard ถาวร (Permanent Leopard)",
+        "price": 650,
+        "category": "blox_fruits",
+        "stock": 8,
+        "description": "ผลเสือดาวถาวร ความเร็วและพลังโจมตีระดับท็อป",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/leopard.png",
+        "createdAt": 1727500000000
+      },
+      "BF-DOU-P": {
+        "id": "BF-DOU-P",
+        "name": "Dough ถาวร (Permanent Dough)",
+        "price": 550,
+        "category": "blox_fruits",
+        "stock": 10,
+        "description": "ผลโมจิถาวร คอมโบโหดอันดับ 1 สำหรับสาย PvP",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/dough.png",
+        "createdAt": 1727500000000
+      },
+      "BF-BUD-P": {
+        "id": "BF-BUD-P",
+        "name": "Buddha ถาวร (Permanent Buddha)",
+        "price": 390,
+        "category": "blox_fruits",
+        "stock": 15,
+        "description": "ผลพระถาวร ที่สุดของการฟาร์มเวลและลงดันเจี้ยน",
+        "imageUrl": "https://bloxfruitsvalues.com/fruits/buddha.png",
+        "createdAt": 1727500000000
+      },
+      "BF-ACC-GOD": {
+        "id": "BF-ACC-GOD",
+        "name": "ไอดีไก่ตัน หมัดก็อดฮิวแมน + ดาบคู่โอเด้ง (Godhuman + CDK)",
+        "price": 150,
+        "category": "blox_fruits",
+        "stock": 20,
+        "description": "ไอดีเลเวลตัน 2550 + หมัด Godhuman + ดาบคู่ Cursed Dual Katana + มีผลตื่นพร้อมเล่น สะอาด ไม่ยืนยันอีเมล",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/808/808665.png",
+        "createdAt": 1727500000000
+      },
+      "ROBUX-1000": {
+        "id": "ROBUX-1000",
+        "name": "1,000 Robux (เรท 1:3.5)",
+        "price": 285,
+        "category": "robux",
+        "stock": 50,
+        "description": "1,000 Robux ขาวสะอาด ปลอดภัย ไม่เสี่ยงโดนแบน ส่งผ่านระบบ Gamepass/Group Payout",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/2153/2153090.png",
+        "createdAt": 1727500000000
+      },
+      "NITRO-1M": {
+        "id": "NITRO-1M",
+        "name": "Discord Nitro Boost (1 เดือน)",
+        "price": 120,
+        "category": "nitro",
+        "stock": 25,
+        "description": "Discord Nitro Full พร้อม 2 เซิร์ฟเวอร์บูสต์ ส่งเป็น Gift Link แท้ 100%",
+        "imageUrl": "https://cdn-icons-png.flaticon.com/512/5968/5968756.png",
+        "createdAt": 1727500000000
+      }
+    }
+  },
+  "paymentConfig": {
+    "1501461933424119878": {
+      "promptpay": "0800000000",
+      "bankName": "กสิกรไทย (KBANK)",
+      "bankAccount": "123-4-56789-0",
+      "accountName": "Docomin Shop Official",
+      "truemoney": "080-000-0000",
+      "updatedAt": 1727500000000
+    },
+    "1534160645665067150": {
+      "promptpay": "0800000000",
+      "bankName": "กสิกรไทย (KBANK)",
+      "bankAccount": "123-4-56789-0",
+      "accountName": "Docomin Shop Official",
+      "truemoney": "080-000-0000",
+      "updatedAt": 1727500000000
+    }
+  },
+  "coupons": {
+    "1501461933424119878": {
+      "DOCOMIN10": {
+        "code": "DOCOMIN10",
+        "discount": 10,
+        "type": "percent",
+        "minSpend": 100,
+        "maxUses": 100,
+        "usedCount": 0,
+        "users": [],
+        "createdAt": 1727500000000
+      },
+      "WELCOME20": {
+        "code": "WELCOME20",
+        "discount": 20,
+        "type": "fixed",
+        "minSpend": 200,
+        "maxUses": 50,
+        "usedCount": 0,
+        "users": [],
+        "createdAt": 1727500000000
+      }
+    },
+    "1534160645665067150": {
+      "DOCOMIN10": {
+        "code": "DOCOMIN10",
+        "discount": 10,
+        "type": "percent",
+        "minSpend": 100,
+        "maxUses": 100,
+        "usedCount": 0,
+        "users": [],
+        "createdAt": 1727500000000
+      },
+      "WELCOME20": {
+        "code": "WELCOME20",
+        "discount": 20,
+        "type": "fixed",
+        "minSpend": 200,
+        "maxUses": 50,
+        "usedCount": 0,
+        "users": [],
+        "createdAt": 1727500000000
+      }
+    }
+  },
+  "orderTickets": {
+    "1554150401924923542": {
+      "channelId": "1554150401924923542",
+      "guildId": "1534160645665067150",
+      "userId": "1281573363080364033",
+      "type": "buy",
+      "itemName": "Could",
+      "quantity": "10",
+      "paymentMethod": "Truemoney",
+      "gameInfo": "Gay6762",
+      "note": "ไม่มี",
+      "status": "closed",
+      "createdAt": 1790608730979,
+      "closedAt": 1790686306696
+    },
+    "1554462068693016576": {
+      "channelId": "1554462068693016576",
+      "guildId": "1534160645665067150",
+      "userId": "1281573363080364033",
+      "type": "buy",
+      "itemName": "ไก่ตัน",
+      "quantity": "1",
+      "paymentMethod": "ทรูมันนี่",
+      "gameInfo": "modem9997",
+      "note": "ไม่มี",
+      "status": "closed",
+      "createdAt": 1790683039051,
+      "completedAt": 1790686233188,
+      "deliveredBy": "1281573363080364033",
+      "closedAt": 1790686264897
+    }
+  },
+  "shopSettings": {}
+}

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: docomin-shop-bot
+    env: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: PREFIX
+        value: "!"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_TLS_REJECT_UNAUTHORIZED
+        value: "0"

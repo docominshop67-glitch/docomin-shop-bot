@@ -625,6 +625,146 @@ function createSalesSummaryEmbed(stats, vouchStats = null) {
     return embed;
 }
 
+/**
+ * สร้าง Embed แสดงระดับสมาชิก VIP และสิทธิพิเศษ
+ */
+function createVipEmbed(user, stats) {
+    const tierColors = {
+        'diamond': 0x00FFFF,
+        'gold': 0xFFD700,
+        'silver': 0xC0C0C0,
+        'bronze': 0xCD7F32
+    };
+
+    const color = tierColors[stats.tier] || 0x5865F2;
+    const bar = renderProgressBar(stats.progress, 10);
+
+    const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`👑 ระดับสมาชิก VIP — ${user.username}`)
+        .setDescription(`สะสมยอดซื้อจากการสั่งซื้อสินค้าใน Docomin Shop เพื่อเลื่อนระดับและรับส่วนลดถาวร!`)
+        .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+        .addFields(
+            {
+                name: '🎖️ ระดับสมาชิกปัจจุบัน',
+                value: `## ${stats.tierName}\n• ส่วนลดอัตโนมัติทุกคำสั่งซื้อ: **${stats.discountPercent}%**`,
+                inline: false
+            },
+            {
+                name: '💰 ยอดซื้อสะสมทั้งหมด',
+                value: `\`฿${stats.totalSpent.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท\``,
+                inline: true
+            },
+            {
+                name: '📦 คำสั่งซื้อสำเร็จ',
+                value: `\`${stats.totalOrders}\` ครั้ง`,
+                inline: true
+            },
+            {
+                name: '🏷️ ประหยัดเงินไปแล้ว',
+                value: `\`฿${stats.totalSaved.toLocaleString('th-TH')} บาท\``,
+                inline: true
+            }
+        );
+
+    if (stats.tier !== 'diamond') {
+        embed.addFields({
+            name: `🚀 ความคืบหน้าสู่ระดับ ${stats.nextTier} (${stats.progress}%)`,
+            value: `${bar}\nซื้อเพิ่มอีกเพียง **฿${stats.remainingToNext.toLocaleString('th-TH')} บาท** เพื่อเลื่อนระดับ!`,
+            inline: false
+        });
+    } else {
+        embed.addFields({
+            name: '👑 ระดับสูงสุด (Max Level)',
+            value: 'คุณอยู่ในระดับสมาชิกสูงสุด **Diamond VIP** รับส่วนลดพิเศษ 10% ทุกการสั่งซื้อตลอดชีพ!',
+            inline: false
+        });
+    }
+
+    embed.setFooter({ text: 'Docomin Shop Loyalty Rewards Program' })
+        .setTimestamp();
+
+    return embed;
+}
+
+/**
+ * สร้าง Embed แสดงประวัติการสั่งซื้อของลูกค้า
+ */
+function createMyOrdersEmbed(user, stats, orders) {
+    const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle(`🛍️ ประวัติการสั่งซื้อของ ${user.username}`)
+        .setDescription(`ข้อมูลคำสั่งซื้อทั้งหมดของคุณในร้านค้า Docomin Shop\n• ระดับสมาชิก: **${stats.tierName}** (ส่วนลดอัตโนมัติ: **${stats.discountPercent}%**)`)
+        .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+        .addFields(
+            {
+                name: '📊 ข้อมูลสรุป',
+                value: `• สั่งซื้อสำเร็จทั้งหมด: **${stats.totalOrders}** รายการ\n• ยอดใช้จ่ายรวม: **฿${stats.totalSpent.toLocaleString('th-TH')}** บาท`,
+                inline: false
+            }
+        );
+
+    if (orders && orders.length > 0) {
+        const orderTexts = orders.map((o, idx) => {
+            const dateStr = `<t:${Math.floor(o.timestamp / 1000)}:d>`;
+            const discText = o.discount > 0 ? ` (ประหยัด ฿${o.discount})` : '';
+            return `**${idx + 1}.** [${dateStr}] **${o.productName}** x${o.quantity || 1} — \`฿${Number(o.amount).toLocaleString()} บาท\`${discText}`;
+        }).join('\n');
+
+        embed.addFields({
+            name: '📦 คำสั่งซื้อล่าสุด',
+            value: orderTexts,
+            inline: false
+        });
+    } else {
+        embed.addFields({
+            name: '📦 ประวัติคำสั่งซื้อ',
+            value: '*ยังไม่มีประวัติการสั่งซื้อ คุณสามารถสั่งซื้อได้ที่ห้องเปิดตั๋วสั่งซื้อ*',
+            inline: false
+        });
+    }
+
+    embed.setFooter({ text: 'Docomin Shop Customer Portal' })
+        .setTimestamp();
+
+    return embed;
+}
+
+/**
+ * สร้าง Embed รายงานการขึ้นบัญชีดำ (Blacklist Alert)
+ */
+function createBlacklistEmbed(targetUser, info) {
+    return new EmbedBuilder()
+        .setColor(0xED4245)
+        .setTitle('🚨 รายงานบัญชีดำ / ประวัติอันตราย (Blacklist Alert)')
+        .setDescription(`⚠️ ตรวจพบข้อมูลผู้ใช้ที่ถูกขึ้นบัญชีดำในระบบ`)
+        .setThumbnail('https://cdn-icons-png.flaticon.com/512/564/564619.png')
+        .addFields(
+            {
+                name: '👤 ผู้ใช้',
+                value: `<@${targetUser.id}> (\`${targetUser.tag || targetUser.username}\`)\nID: \`${targetUser.id}\``,
+                inline: true
+            },
+            {
+                name: '🛡️ สถานะ',
+                value: '🔴 **ถูกขึ้นบัญชีดำ (Blacklisted)**',
+                inline: true
+            },
+            {
+                name: '⚠️ สาเหตุที่ถูกแบน',
+                value: `\`\`\`diff\n- ${info.reason || 'พฤติกรรมน่าสงสัย / หลอกลวง'}\n\`\`\``,
+                inline: false
+            },
+            {
+                name: '👮 วันที่บันทึก',
+                value: `<t:${Math.floor(info.timestamp / 1000)}:F> (<t:${Math.floor(info.timestamp / 1000)}:R>)`,
+                inline: true
+            }
+        )
+        .setFooter({ text: 'Docomin Anti-Fraud Security System' })
+        .setTimestamp(new Date(info.timestamp));
+}
+
 // ========================================================
 // 3. PRODUCT CATALOG & SHOWCASE (แคตตาล็อกสินค้า)
 // ========================================================
@@ -1087,6 +1227,11 @@ module.exports = {
     createVouchEmbed,
     createReputationEmbed,
     createSalesSummaryEmbed,
+
+    // Loyalty, Orders & Security
+    createVipEmbed,
+    createMyOrdersEmbed,
+    createBlacklistEmbed,
 
     // Product Catalog
     CATEGORY_NAMES,

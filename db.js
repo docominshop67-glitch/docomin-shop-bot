@@ -28,7 +28,9 @@ function loadDB() {
                 coupons: {},
                 orderTickets: {},
                 shopSettings: {},
-                sales: []
+                sales: [],
+                blacklist: {},
+                restockSubscribers: {}
             };
             fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
             return initialData;
@@ -57,6 +59,8 @@ function loadDB() {
         data.orderTickets = data.orderTickets || {};
         data.shopSettings = data.shopSettings || {};
         data.sales = data.sales || [];
+        data.blacklist = data.blacklist || {};
+        data.restockSubscribers = data.restockSubscribers || {};
         return data;
     } catch (e) {
         console.error('Error loading DB:', e);
@@ -82,7 +86,9 @@ function loadDB() {
             coupons: {},
             orderTickets: {},
             shopSettings: {},
-            sales: []
+            sales: [],
+            blacklist: {},
+            restockSubscribers: {}
         };
     }
 }
@@ -1000,6 +1006,127 @@ const db = {
             topProducts,
             recentSales: list.slice(0, 5)
         };
+    },
+
+    // --- VIP Loyalty & Customer Analytics (ระบบสมาชิกระดับ VIP และส่วนลดอัตโนมัติ) ---
+    getCustomerStats(guildId, customerId) {
+        const data = loadDB();
+        const sales = (data.sales || []).filter(s => s.guildId === guildId && s.customerId === customerId);
+        const totalOrders = sales.length;
+        const totalSpent = sales.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        const totalSaved = sales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
+
+        let tier = 'bronze';
+        let tierName = '🥉 Member ทั่วไป';
+        let discountPercent = 0;
+        let nextTier = '🥈 Silver VIP';
+        let nextTierThreshold = 500;
+
+        if (totalSpent >= 5000) {
+            tier = 'diamond';
+            tierName = '💎 Diamond VIP';
+            discountPercent = 10;
+            nextTier = 'ระดับสูงสุดแล้ว';
+            nextTierThreshold = 5000;
+        } else if (totalSpent >= 1500) {
+            tier = 'gold';
+            tierName = '🥇 Gold VIP';
+            discountPercent = 5;
+            nextTier = '💎 Diamond VIP';
+            nextTierThreshold = 5000;
+        } else if (totalSpent >= 500) {
+            tier = 'silver';
+            tierName = '🥈 Silver VIP';
+            discountPercent = 3;
+            nextTier = '🥇 Gold VIP';
+            nextTierThreshold = 1500;
+        }
+
+        const remainingToNext = Math.max(0, nextTierThreshold - totalSpent);
+        const progress = nextTierThreshold > 0 
+            ? Math.min(100, Math.round((totalSpent / nextTierThreshold) * 100))
+            : 100;
+
+        return {
+            customerId,
+            totalOrders,
+            totalSpent,
+            totalSaved,
+            tier,
+            tierName,
+            discountPercent,
+            nextTier,
+            nextTierThreshold,
+            remainingToNext,
+            progress,
+            orders: sales.slice(-10).reverse()
+        };
+    },
+
+    // --- Restock Wishlist / Waiting List (ระบบจองคิวแจ้งเตือนเมื่อสินค้าเข้า) ---
+    subscribeRestock(productId, userId) {
+        const data = loadDB();
+        data.restockSubscribers = data.restockSubscribers || {};
+        const pid = productId.toUpperCase();
+        data.restockSubscribers[pid] = data.restockSubscribers[pid] || [];
+        if (!data.restockSubscribers[pid].includes(userId)) {
+            data.restockSubscribers[pid].push(userId);
+            saveDB(data);
+            return { success: true, count: data.restockSubscribers[pid].length, subscribed: true };
+        }
+        return { success: true, count: data.restockSubscribers[pid].length, subscribed: false };
+    },
+
+    getRestockSubscribers(productId) {
+        const data = loadDB();
+        const pid = productId.toUpperCase();
+        return data.restockSubscribers?.[pid] || [];
+    },
+
+    clearRestockSubscribers(productId) {
+        const data = loadDB();
+        const pid = productId.toUpperCase();
+        if (data.restockSubscribers?.[pid]) {
+            const count = data.restockSubscribers[pid].length;
+            delete data.restockSubscribers[pid];
+            saveDB(data);
+            return count;
+        }
+        return 0;
+    },
+
+    // --- Scammer Blacklist Protection (ระบบบัญชีดำป้องกันมิจฉาชีพ) ---
+    addBlacklist(userId, reason, adminId) {
+        const data = loadDB();
+        data.blacklist = data.blacklist || {};
+        data.blacklist[userId] = {
+            userId,
+            reason: reason || 'พฤติกรรมน่าสงสัย / หลอกลวง',
+            adminId,
+            timestamp: Date.now()
+        };
+        saveDB(data);
+        return data.blacklist[userId];
+    },
+
+    getBlacklist(userId) {
+        const data = loadDB();
+        return data.blacklist?.[userId] || null;
+    },
+
+    removeBlacklist(userId) {
+        const data = loadDB();
+        if (data.blacklist?.[userId]) {
+            delete data.blacklist[userId];
+            saveDB(data);
+            return true;
+        }
+        return false;
+    },
+
+    getAllBlacklist() {
+        const data = loadDB();
+        return Object.values(data.blacklist || {});
     }
 };
 

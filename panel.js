@@ -31,7 +31,8 @@ function createPanelEmbedAndRows(guild, client) {
     const payment = db.getPaymentConfig(guild.id);
     const isPaymentConfigured = !!payment?.promptpay;
     const shopSettings = db.getShopSettings(guild.id);
-    const automodConfig = db.getAutomod(guild.id);
+    const automodConfig = db.getAutoMod(guild.id);
+    const salesStats = db.getSalesAnalytics ? db.getSalesAnalytics(guild.id) : { totalRevenue: 0, totalSalesCount: 0 };
 
     const memoryUsageMB = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
     const ping = client.ws.ping;
@@ -47,9 +48,9 @@ function createPanelEmbedAndRows(guild, client) {
             {
                 name: '🛒 สถานะร้านค้า (Docomin Shop)',
                 value: `• สินค้าในระบบ: **${products.length}** รายการ (พร้อมส่ง: **${inStockCount}** รายการ)\n` +
+                    `• ยอดขายสะสม: **฿${(salesStats.totalRevenue || 0).toLocaleString()}** บาท (\`${salesStats.totalSalesCount || 0}\` ออเดอร์)\n` +
                     `• ช่องทางชำระเงิน: ${isPaymentConfigured ? `✅ พร้อมเพย์ (\`${payment.promptpay}\`)` : '⚠️ ยังไม่ได้ตั้งค่า (/set-payment)'}\n` +
-                    `• ห้องรีวิว: ${shopSettings?.reviewId ? `<#${shopSettings.reviewId}>` : 'ยังไม่ได้ระบุ'}\n` +
-                    `• ระบบสั่งซื้อ: ${shopSettings?.orderId ? `<#${shopSettings.orderId}>` : 'พร้อมติดตั้ง'}`,
+                    `• ห้องรีวิว: ${shopSettings?.reviewId ? `<#${shopSettings.reviewId}>` : 'ยังไม่ได้ระบุ'}`,
                 inline: false
             },
             {
@@ -84,6 +85,11 @@ function createPanelEmbedAndRows(guild, client) {
                 .setDescription('ดูสินค้า, เพิ่มสินค้า, เติมสต็อก, ติดตั้งระบบร้านค้า')
                 .setValue('section_shop')
                 .setEmoji('🛒'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('📊 รายงานยอดขาย & สถิติ (Sales & Analytics)')
+                .setDescription('ดูยอดขายรวม, จำนวนออเดอร์, สินค้าขายดี, รายได้วันนี้')
+                .setValue('section_sales')
+                .setEmoji('📊'),
             new StringSelectMenuOptionBuilder()
                 .setLabel('🛡️ จัดการความปลอดภัย & ข้อความ')
                 .setDescription('ลบข้อความด่วน, ล็อกห้อง, ตั้งค่า Slowmode, ตรวจสอบสมาชิก')

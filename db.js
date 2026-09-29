@@ -27,7 +27,8 @@ function loadDB() {
                 paymentConfig: {},
                 coupons: {},
                 orderTickets: {},
-                shopSettings: {}
+                shopSettings: {},
+                sales: []
             };
             fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
             return initialData;
@@ -55,6 +56,7 @@ function loadDB() {
         data.coupons = data.coupons || {};
         data.orderTickets = data.orderTickets || {};
         data.shopSettings = data.shopSettings || {};
+        data.sales = data.sales || [];
         return data;
     } catch (e) {
         console.error('Error loading DB:', e);
@@ -79,7 +81,8 @@ function loadDB() {
             paymentConfig: {},
             coupons: {},
             orderTickets: {},
-            shopSettings: {}
+            shopSettings: {},
+            sales: []
         };
     }
 }
@@ -647,6 +650,10 @@ const db = {
         return data.automod?.[guildId] || { antiInvite: true, antiSpam: true };
     },
 
+    getAutomod(guildId) {
+        return this.getAutoMod(guildId);
+    },
+
     setAutoMod(guildId, config) {
         const data = loadDB();
         data.automod = data.automod || {};
@@ -906,6 +913,93 @@ const db = {
         data.shopSettings[guildId] = { ...(data.shopSettings[guildId] || {}), ...settings };
         saveDB(data);
         return data.shopSettings[guildId];
+    },
+
+    // --- Sales Analytics & Order History (บันทึกยอดขายและสถิติร้านค้า) ---
+    recordSale(guildId, saleData) {
+        const data = loadDB();
+        data.sales = data.sales || [];
+        const newSale = {
+            id: `sale_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            guildId,
+            orderId: saleData.orderId || null,
+            customerId: saleData.customerId,
+            customerTag: saleData.customerTag || 'Unknown',
+            productId: saleData.productId || null,
+            productName: saleData.productName || 'สินค้า',
+            quantity: parseInt(saleData.quantity) || 1,
+            originalAmount: Number(saleData.originalAmount) || 0,
+            amount: Number(saleData.amount) || 0,
+            discount: Number(saleData.discount) || 0,
+            couponCode: saleData.couponCode || null,
+            adminId: saleData.adminId || null,
+            adminTag: saleData.adminTag || 'Admin',
+            timestamp: Date.now()
+        };
+        data.sales.push(newSale);
+        saveDB(data);
+        return newSale;
+    },
+
+    getSales(guildId, limit = 50) {
+        const data = loadDB();
+        let list = data.sales || [];
+        if (guildId) {
+            list = list.filter(s => s.guildId === guildId);
+        }
+        return list.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
+    },
+
+    getSalesAnalytics(guildId) {
+        const list = this.getSales(guildId, 1000);
+        const totalSalesCount = list.length;
+        let totalRevenue = 0;
+        let totalDiscount = 0;
+        const uniqueCustomers = new Set();
+        const productStats = {};
+        const now = Date.now();
+        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+        let todayRevenue = 0;
+        let weekRevenue = 0;
+        let couponsUsedCount = 0;
+
+        for (const s of list) {
+            totalRevenue += (s.amount || 0);
+            totalDiscount += (s.discount || 0);
+            if (s.customerId) uniqueCustomers.add(s.customerId);
+            if (s.couponCode) couponsUsedCount++;
+
+            const pName = s.productName || 'อื่นๆ';
+            if (!productStats[pName]) {
+                productStats[pName] = { name: pName, count: 0, revenue: 0 };
+            }
+            productStats[pName].count += (s.quantity || 1);
+            productStats[pName].revenue += (s.amount || 0);
+
+            if (s.timestamp >= oneDayAgo) {
+                todayRevenue += (s.amount || 0);
+            }
+            if (s.timestamp >= sevenDaysAgo) {
+                weekRevenue += (s.amount || 0);
+            }
+        }
+
+        const topProducts = Object.values(productStats)
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5);
+
+        return {
+            totalSalesCount,
+            totalRevenue,
+            totalDiscount,
+            uniqueCustomersCount: uniqueCustomers.size,
+            couponsUsedCount,
+            todayRevenue,
+            weekRevenue,
+            topProducts,
+            recentSales: list.slice(0, 5)
+        };
     }
 };
 

@@ -612,6 +612,42 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
+        .setName('vip')
+        .setDescription('ดูระดับสมาชิก VIP ส่วนลดพิเศษ และความคืบหน้าการเลื่อนระดับของคุณ'),
+
+    new SlashCommandBuilder()
+        .setName('my-orders')
+        .setDescription('ดูประวัติรายการสั่งซื้อและยอดใช้จ่ายของคุณในร้าน Docomin Shop'),
+
+    new SlashCommandBuilder()
+        .setName('notify-restock')
+        .setDescription('ลงทะเบียนรับการแจ้งเตือนทันทีเมื่อสินค้าที่เลือกเติมสต็อก')
+        .addStringOption(opt => opt.setName('product_id').setDescription('รหัสสินค้า (เช่น BF-KIT-P หรือ BF-DOUGH)').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('order-status')
+        .setDescription('ตรวจสอบสถานะและรายละเอียดคำสั่งซื้อด้วยรหัสคำสั่งซื้อ')
+        .addStringOption(opt => opt.setName('order_id').setDescription('รหัสออเดอร์ หรือ รหัสห้องตั๋ว').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('blacklist-check')
+        .setDescription('ตรวจสอบสถานะความปลอดภัยและประวัติบัญชีดำของผู้ใช้')
+        .addUserOption(opt => opt.setName('user').setDescription('เลือกผู้ใช้ที่ต้องการตรวจสอบ').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('blacklist-add')
+        .setDescription('เพิ่มผู้ใช้เข้าสู่บัญชีดำ ป้องกันการสั่งซื้อและการหลอกลวง (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addUserOption(opt => opt.setName('user').setDescription('ผู้ใช้ที่ต้องการขึ้นบัญชีดำ').setRequired(true))
+        .addStringOption(opt => opt.setName('reason').setDescription('สาเหตุที่ขึ้นบัญชีดำ').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('blacklist-remove')
+        .setDescription('ปลดผู้ใช้ออกจากบัญชีดำ (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addUserOption(opt => opt.setName('user').setDescription('ผู้ใช้ที่ต้องการปลดออกจากบัญชีดำ').setRequired(true)),
+
+    new SlashCommandBuilder()
         .setName('restock-alert')
         .setDescription('ประกาศแจ้งเตือนสต็อกสินค้าเข้าใหม่ให้สมาชิกทราบ (Admin)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -839,7 +875,7 @@ client.on('interactionCreate', async interaction => {
                     ]
                 });
 
-                db.setOrderTicket(ticketChannel.id, {
+                const ticketData = {
                     guildId: interaction.guildId,
                     userId: interaction.user.id,
                     type: 'buy',
@@ -849,7 +885,8 @@ client.on('interactionCreate', async interaction => {
                     gameInfo,
                     note,
                     status: 'open'
-                });
+                };
+                db.setOrderTicket(ticketChannel.id, ticketData);
 
                 const orderDossierEmbed = new EmbedBuilder()
                     .setColor(0x57F287)
@@ -873,7 +910,17 @@ client.on('interactionCreate', async interaction => {
                     components: [actionBtns]
                 });
 
-                // ส่งการ์ดชำระเงินและ QR Code พร้อมเพย์ทันที เพื่อความสะดวกสูงสุดของลูกค้า
+                // 1. ตรวจสอบสถานะบัญชีดำ (Blacklist Guard)
+                const blacklisted = db.getBlacklist(interaction.user.id);
+                if (blacklisted) {
+                    const blEmbed = docominShop.createBlacklistEmbed(interaction.user, blacklisted);
+                    await ticketChannel.send({
+                        content: '🚨 @here **แจ้งเตือนความปลอดภัย (Security Alert):** สมาชิกที่เปิดตั๋วนี้มีประวัติอยู่ในบัญชีดำ (Blacklist)! แอดมินโปรดระมัดระวังและตรวจสอบอย่างละเอียดก่อนทำธุรกรรม',
+                        embeds: [blEmbed]
+                    });
+                }
+
+                // 2. คำนวณราคาและส่วนลดสมาชิก VIP อัตโนมัติ (VIP Loyalty Program)
                 const products = db.getProducts(interaction.guildId);
                 const itemQuery = (itemName || '').trim().toLowerCase();
                 const foundProduct = products.find(p => 
@@ -887,11 +934,38 @@ client.on('interactionCreate', async interaction => {
                 );
 
                 const qty = parseInt(quantity) || 1;
-                const calculatedAmount = foundProduct && foundProduct.price ? foundProduct.price * qty : null;
+                const baseAmount = foundProduct && foundProduct.price ? foundProduct.price * qty : 150;
+                const vipStats = db.getCustomerStats(interaction.guildId, interaction.user.id);
+
+                let finalAmount = baseAmount;
+                let vipDiscount = 0;
+                let vipNote = '';
+
+                if (vipStats.discountPercent > 0 && baseAmount > 0) {
+                    vipDiscount = Math.round((baseAmount * vipStats.discountPercent) / 100);
+                    finalAmount = Math.max(0, baseAmount - vipDiscount);
+                    vipNote = `\n👑 สิทธิพิเศษ ${vipStats.tierName}: ลดทันที ${vipStats.discountPercent}% (-฿${vipDiscount.toLocaleString()} บาท)`;
+                    
+                    // บันทึกลงตั๋ว
+                    ticketData.originalAmount = baseAmount;
+                    ticketData.discount = vipDiscount;
+                    ticketData.netAmount = finalAmount;
+                    ticketData.vipTier = vipStats.tier;
+                    db.setOrderTicket(ticketChannel.id, ticketData);
+
+                    await ticketChannel.send({
+                        content: `🎉 ยินดีต้อนรับคุณ <@${interaction.user.id}> ลูกค้าคนพิเศษระดับ **${vipStats.tierName}**!\nระบบได้มอบส่วนลดอัตโนมัติให้คุณ **${vipStats.discountPercent}%** (-฿${vipDiscount.toLocaleString()} บาท) ยอดสุทธิเหลือเพียง **฿${finalAmount.toLocaleString()}** บาท ✨`
+                    });
+                } else {
+                    ticketData.originalAmount = baseAmount;
+                    ticketData.netAmount = baseAmount;
+                    db.setOrderTicket(ticketChannel.id, ticketData);
+                }
+
                 const payEmbed = docominShop.createPaymentEmbed(
                     interaction.guildId,
-                    calculatedAmount,
-                    `คำสั่งซื้อ: ${itemName} (x${qty})`
+                    finalAmount,
+                    `คำสั่งซื้อ: ${itemName} (x${qty})${vipNote}`
                 );
                 const payRow = docominShop.createPaymentActionRow(ticketChannel.id);
                 await ticketChannel.send({
@@ -3182,12 +3256,12 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: [embed] });
         }
 
-        // --- Restock Alert Broadcast ---
+        // --- Restock Alert Broadcast (พร้อมแจ้งเตือนสมาชิกที่จองคิวไว้) ---
         if (commandName === 'restock-alert') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะประกาศสต็อกได้', ephemeral: true });
             }
-            const pid = interaction.options.getString('product_id');
+            const pid = interaction.options.getString('product_id').trim();
             const stock = interaction.options.getInteger('stock');
             const customMsg = interaction.options.getString('message');
 
@@ -3219,8 +3293,168 @@ client.on('interactionCreate', async interaction => {
                     .setStyle(ButtonStyle.Success)
             );
 
-            await interaction.channel.send({ content: '@everyone 🚨 สต็อกสินค้าเข้าใหม่แล้ว!', embeds: [embed], components: [buyBtn] });
-            return interaction.reply({ content: '✅ ส่งการ์ดประกาศสต็อกเข้าเรียบร้อยแล้ว!', ephemeral: true });
+            // แจ้งเตือนลูกค้าที่กดรับแจ้งเตือนไว้ (Waiting List Auto-Ping)
+            const subscribers = db.getRestockSubscribers(updated.id);
+            let pingContent = '@everyone 🚨 สต็อกสินค้าเข้าใหม่แล้ว!';
+            if (subscribers.length > 0) {
+                const mentions = subscribers.map(id => `<@${id}>`).join(' ');
+                pingContent += `\n🔔 **แจ้งเตือนสมาชิกที่ลงชื่อรอรับสินค้า:** ${mentions}`;
+                db.clearRestockSubscribers(updated.id);
+            }
+
+            await interaction.channel.send({ content: pingContent, embeds: [embed], components: [buyBtn] });
+            return interaction.reply({ content: `✅ ส่งการ์ดประกาศสต็อกเข้าเรียบร้อยแล้ว!${subscribers.length > 0 ? ` (แท็กแจ้งเตือนผู้รอสินค้า ${subscribers.length} คน)` : ''}`, ephemeral: true });
+        }
+
+        // --- VIP Loyalty Tier System ---
+        if (commandName === 'vip') {
+            const stats = db.getCustomerStats(interaction.guildId, interaction.user.id);
+            const embed = docominShop.createVipEmbed(interaction.user, stats);
+            return interaction.reply({ embeds: [embed] });
+        }
+
+        // --- Customer Order History ---
+        if (commandName === 'my-orders') {
+            const stats = db.getCustomerStats(interaction.guildId, interaction.user.id);
+            const embed = docominShop.createMyOrdersEmbed(interaction.user, stats, stats.orders || []);
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        // --- Restock Wishlist Subscription ---
+        if (commandName === 'notify-restock') {
+            const pidInput = interaction.options.getString('product_id').trim();
+            const products = db.getProducts(interaction.guildId);
+            const itemQuery = pidInput.toLowerCase();
+            const found = products.find(p => p.id.toLowerCase() === itemQuery || p.name.toLowerCase().includes(itemQuery));
+            const targetId = found ? found.id : pidInput.toUpperCase();
+            const targetName = found ? found.name : targetId;
+
+            const res = db.subscribeRestock(targetId, interaction.user.id);
+            if (!res.success) {
+                return interaction.reply({
+                    content: `ℹ️ คุณได้ลงทะเบียนแจ้งเตือนสินค้า **${targetName}** (\`${targetId}\`) ไว้อยู่แล้ว! เมื่อมีของเข้าบอทจะแท็กคุณทันทีครับ ✨`,
+                    ephemeral: true
+                });
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('🔔 ลงทะเบียนแจ้งเตือนเติมสต็อกสำเร็จ!')
+                .setDescription(`ระบบจะแท็กคุณ <@${interaction.user.id}> ทันทีเมื่อสินค้า **${targetName}** มีการเติมสต็อกใหม่เข้าเซิร์ฟเวอร์!`)
+                .addFields(
+                    { name: '📦 สินค้าที่ติดตาม', value: `\`${targetName}\` (${targetId})`, inline: true },
+                    { name: '👥 คิวรอแจ้งเตือนขณะนี้', value: `${res.totalWaiting} คน`, inline: true }
+                )
+                .setFooter({ text: 'Docomin Shop Restock Watcher' })
+                .setTimestamp();
+
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        // --- Order Tracking System ---
+        if (commandName === 'order-status') {
+            const orderId = interaction.options.getString('order_id').trim();
+            const activeTicket = db.getOrderTicket(orderId);
+            const allSales = db.getSales(interaction.guildId, 200);
+            const completedSale = allSales.find(s => s.orderId === orderId || s.id === orderId);
+
+            if (!activeTicket && !completedSale) {
+                return interaction.reply({
+                    content: `❌ ไม่พบข้อมูลคำสั่งซื้อรหัส \`${orderId}\` ในระบบ กรุณาตรวจสอบรหัสออเดอร์อีกครั้งครับ`,
+                    ephemeral: true
+                });
+            }
+
+            const embed = new EmbedBuilder().setTimestamp();
+
+            if (activeTicket) {
+                const isCompleted = activeTicket.status === 'completed';
+                embed.setColor(isCompleted ? 0x57F287 : 0xFEE75C)
+                    .setTitle(`📦 สถานะคำสั่งซื้อ: #${orderId}`)
+                    .addFields(
+                        { name: '👤 ลูกค้า', value: `<@${activeTicket.userId}>`, inline: true },
+                        { name: '📦 รายการสินค้า', value: `\`${activeTicket.itemName || 'สินค้า'}\` (x${activeTicket.quantity || 1})`, inline: true },
+                        { name: '💳 สถานะ', value: isCompleted ? '✅ **จัดส่งสำเร็จแล้ว**' : '⏳ **กำลังดำเนินการ / รอส่งมอบ**', inline: true },
+                        { name: '💰 ยอดชำระ', value: `฿${(activeTicket.netAmount || activeTicket.originalAmount || 150).toLocaleString()} บาท`, inline: true },
+                        { name: '💳 ช่องทาง', value: activeTicket.paymentMethod || 'ไม่ระบุ', inline: true },
+                        { name: '🎟️ ส่วนลด/คูปอง', value: activeTicket.couponCode ? `\`${activeTicket.couponCode}\` (-฿${(activeTicket.discount || 0).toLocaleString()})` : (activeTicket.discount ? `VIP Discount (-฿${activeTicket.discount.toLocaleString()})` : 'ไม่มี'), inline: true }
+                    );
+            } else if (completedSale) {
+                embed.setColor(0x57F287)
+                    .setTitle(`📦 ข้อมูลคำสั่งซื้อที่เสร็จสิ้น: #${completedSale.orderId || completedSale.id}`)
+                    .addFields(
+                        { name: '👤 ลูกค้า', value: `<@${completedSale.customerId}> (\`${completedSale.customerTag}\`)`, inline: true },
+                        { name: '📦 สินค้า', value: `\`${completedSale.productName}\` (x${completedSale.quantity || 1})`, inline: true },
+                        { name: '💳 สถานะ', value: '✅ **จัดส่งสำเร็จเรียบร้อย (Delivered)**', inline: true },
+                        { name: '💰 ยอดสุทธิ', value: `฿${(completedSale.amount || 0).toLocaleString()} บาท`, inline: true },
+                        { name: '👮 แอดมินผู้ส่งมอบ', value: `<@${completedSale.adminId}>`, inline: true },
+                        { name: '📅 วันที่จัดส่ง', value: `<t:${Math.floor((completedSale.timestamp || Date.now()) / 1000)}:R>`, inline: true }
+                    );
+            }
+
+            return interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        // --- Blacklist Management ---
+        if (commandName === 'blacklist-check') {
+            const targetUser = interaction.options.getUser('user');
+            const info = db.getBlacklist(targetUser.id);
+            if (!info) {
+                const cleanEmbed = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle(`✅ สมาชิกปลอดภัย: ${targetUser.tag}`)
+                    .setDescription(`ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในรายชื่อบัญชีดำ (Blacklist) มีประวัติขาวสะอาด สามารถทำธุรกรรมได้ตามปกติ ✨`)
+                    .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+                    .setTimestamp();
+                return interaction.reply({ embeds: [cleanEmbed] });
+            }
+
+            const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
+            return interaction.reply({ embeds: [blEmbed] });
+        }
+
+        if (commandName === 'blacklist-add') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะจัดการบัญชีดำได้', ephemeral: true });
+            }
+            const targetUser = interaction.options.getUser('user');
+            const reason = interaction.options.getString('reason');
+
+            if (targetUser.id === interaction.user.id) {
+                return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำตัวเองได้', ephemeral: true });
+            }
+            if (targetUser.bot) {
+                return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำบอทได้', ephemeral: true });
+            }
+
+            const info = db.addBlacklist(targetUser.id, reason, interaction.user.id);
+            const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
+
+            return interaction.reply({
+                content: `🚨 **ขึ้นบัญชีดำเรียบร้อยแล้ว:** <@${targetUser.id}> จะถูกตรวจจับความปลอดภัยและมีสัญญาณเตือนแดงเมื่อเปิดตั๋ว`,
+                embeds: [blEmbed]
+            });
+        }
+
+        if (commandName === 'blacklist-remove') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะปลดบัญชีดำได้', ephemeral: true });
+            }
+            const targetUser = interaction.options.getUser('user');
+            const removed = db.removeBlacklist(targetUser.id);
+
+            if (!removed) {
+                return interaction.reply({ content: `ℹ️ ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในบัญชีดำอยู่แล้ว`, ephemeral: true });
+            }
+
+            const unblEmbed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('🟢 ปลดออกจากบัญชีดำสำเร็จ (Blacklist Removed)')
+                .setDescription(`ผู้ใช้ <@${targetUser.id}> ได้รับการปลดออกจากบัญชีดำโดย <@${interaction.user.id}> เรียบร้อยแล้ว`)
+                .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+                .setTimestamp();
+
+            return interaction.reply({ embeds: [unblEmbed] });
         }
 
         // --- Help ---
@@ -3230,7 +3464,7 @@ client.on('interactionCreate', async interaction => {
                 .setTitle('📖 คู่มือและระบบทั้งหมดของบอท (All-in-One Dashboard)')
                 .addFields(
                     { name: '🎛️ ศูนย์ควบคุม & AI จัดการเซิร์ฟเวอร์ (Master Panel & AI Admin)', value: '`/panel` หรือ `/admin-panel` เปิดแผงควบคุมร้านค้าและความปลอดภัยครบวงจร\n`/sync` บังคับซิงค์และอัปเดตคำสั่งใหม่เข้าเซิร์ฟเวอร์ทันที\n`/ai-admin <คำสั่ง>` ให้ Gemini AI ช่วยจัดการเซิร์ฟเวอร์อัตโนมัติ (หรือแท็ก @Bot)' },
-                    { name: '🛒 Docomin Shop (ระบบร้านค้า & เครดิต)', value: '`/setup-docomin-shop` ติดตั้งระบบร้านค้าครบวงจรใน 1 วินาที (ป้องกันห้องซ้ำ 100%)\n`/vouch` ส่งรีวิวและบันทึกเครดิต\n`/reputation` ดูคะแนนเครดิตร้านค้า\n`/products` ดูแคตตาล็อกสินค้า\n`/payment`, `/pay-qr` ชำระเงิน/สร้าง QR พร้อมเพย์\n`/setup-order-ticket` ติดตั้งแผงตั๋วสั่งซื้อ\n`/coupon-create`, `/coupon-check` คูปองส่วนลด\n`/product-add`, `/product-stock`, `/restock-alert` จัดการสต็อก' },
+                    { name: '🛒 Docomin Shop (ระบบร้านค้า, ลูกค้า & สถิติ)', value: '`/setup-docomin-shop` ติดตั้งระบบร้านค้าครบวงจรใน 1 วินาที (ป้องกันห้องซ้ำ 100%)\n`/vip` เช็กระดับ VIP และส่วนลดพิเศษของคุณ\n`/my-orders` ดูประวัติการสั่งซื้อของคุณ\n`/order-status <id>` เช็กสถานะคำสั่งซื้อ\n`/notify-restock <id>` ลงชื่อรอรับการแจ้งเตือนเมื่อของเติมสต็อก\n`/vouch` ส่งรีวิวและบันทึกเครดิต\n`/reputation` ดูคะแนนเครดิตร้านค้า\n`/products` ดูแคตตาล็อกสินค้า\n`/payment`, `/pay-qr` ชำระเงิน/สร้าง QR พร้อมเพย์\n`/setup-order-ticket` ติดตั้งแผงตั๋วสั่งซื้อ\n`/coupon-create`, `/coupon-check`, `/coupon-list`, `/coupon-delete` จัดการคูปอง\n`/sales-summary` รายงานสรุปยอดขายและสินค้าขายดี\n`/blacklist-check`, `/blacklist-add`, `/blacklist-remove` ระบบบัญชีดำป้องกันมิจฉาชีพ\n`/product-add`, `/product-stock`, `/restock-alert` จัดการสต็อก' },
                     { name: '🍎 Blox Fruits Real-Time Stock & Alert', value: '`/bloxfruits-stock` ดูสต็อกผลปีศาจแบบเรียลไทม์พร้อมรูปของแท้\n`/bloxfruits-alert` เลือกผลที่ต้องการให้แจ้งเตือน\n`/bloxfruits-channel` ตั้งห้องส่งสต็อกอัตโนมัติ' },
                     { name: '⚖️ Blox Fruits Trade & Value Calculator', value: '`/bf-value <ผล>` ดูมูลค่าตลาดจริง Demand (1-10) และแนวโน้มราคา\n`/bf-trade <ผลคุณ> <ผลเขา>` วิเคราะห์การเทรด คำนวณกำไร/ขาดทุนเป็น %' },
                     { name: '🎙️ Voice Master (ห้องเสียงส่วนตัว)', value: '`/setup-voicemaster` ติดตั้งระบบห้องเสียงส่วนตัวอัตโนมัติพร้อมแผงควบคุม (ล็อก, ซ่อน, จำกัดคน, เตะสมาชิก)' },

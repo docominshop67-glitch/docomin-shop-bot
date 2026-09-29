@@ -61,6 +61,8 @@ function loadDB() {
         data.sales = data.sales || [];
         data.blacklist = data.blacklist || {};
         data.restockSubscribers = data.restockSubscribers || {};
+        data.productKeys = data.productKeys || {};
+        data.customerRoles = data.customerRoles || {};
         return data;
     } catch (e) {
         console.error('Error loading DB:', e);
@@ -1127,6 +1129,73 @@ const db = {
     getAllBlacklist() {
         const data = loadDB();
         return Object.values(data.blacklist || {});
+    },
+
+    // --- Digital Code Vault & Instant Delivery ---
+    addProductKeys(productId, keysArray) {
+        const data = loadDB();
+        data.productKeys = data.productKeys || {};
+        const pid = productId.toUpperCase();
+        data.productKeys[pid] = data.productKeys[pid] || [];
+        const cleanedKeys = keysArray.map(k => k.trim()).filter(Boolean);
+        data.productKeys[pid].push(...cleanedKeys);
+        saveDB(data);
+        return { added: cleanedKeys.length, total: data.productKeys[pid].length };
+    },
+
+    popProductKey(productId) {
+        const data = loadDB();
+        data.productKeys = data.productKeys || {};
+        const pid = productId.toUpperCase();
+        if (data.productKeys[pid] && data.productKeys[pid].length > 0) {
+            const key = data.productKeys[pid].shift();
+            saveDB(data);
+            return key;
+        }
+        return null;
+    },
+
+    getProductKeysCount(productId) {
+        const data = loadDB();
+        const pid = productId.toUpperCase();
+        return data.productKeys?.[pid]?.length || 0;
+    },
+
+    getAllProductKeys(productId) {
+        const data = loadDB();
+        const pid = productId.toUpperCase();
+        return data.productKeys?.[pid] || [];
+    },
+
+    // --- Verified Customer Role System ---
+    setCustomerRole(guildId, roleId) {
+        const data = loadDB();
+        data.customerRoles = data.customerRoles || {};
+        data.customerRoles[guildId] = roleId;
+        saveDB(data);
+        return roleId;
+    },
+
+    getCustomerRole(guildId) {
+        const data = loadDB();
+        return data.customerRoles?.[guildId] || null;
+    },
+
+    // --- Cloud Database Backup & Restore ---
+    backupDB() {
+        const data = loadDB();
+        return JSON.stringify(data, null, 2);
+    },
+
+    restoreDB(jsonString) {
+        try {
+            const parsed = JSON.parse(jsonString);
+            if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid JSON format');
+            saveDB(parsed);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
     }
 };
 

@@ -4,10 +4,12 @@ const http = require('http');
  * เริ่มต้น HTTP Web Server สำหรับแสดงสถานะ Dashboard และรองรับ Cloud Free Hosting (Render, Koyeb, Railway, Replit)
  * ป้องกันไม่ให้ Cloud Service หลับ (Keep-Alive 24/7)
  */
-function startWebServer(client) {
+function startWebServer(client, totalCommands = 102) {
     const PORT = process.env.PORT || 3000;
 
     const server = http.createServer((req, res) => {
+        const cmdCount = (client && client.commandsCount) ? client.commandsCount : totalCommands;
+
         // Health check endpoint สำหรับ Uptime Monitor / Render Health Check
         if (req.url === '/ping' || req.url === '/healthz' || req.url === '/uptime') {
             res.writeHead(200, {
@@ -17,6 +19,7 @@ function startWebServer(client) {
             return res.end(JSON.stringify({
                 status: 'ok',
                 botOnline: client ? client.isReady() : false,
+                commands: cmdCount,
                 uptime: process.uptime(),
                 ping: client && client.ws ? client.ws.ping : 0,
                 timestamp: Date.now()
@@ -48,7 +51,7 @@ function startWebServer(client) {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Kanit', sans-serif; }
         body { background: #0c0e17; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-        .card { background: #151828; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; max-width: 640px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); text-align: center; }
+        .card { background: #151828; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; max-width: 680px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); text-align: center; }
         .header { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 25px; }
         .avatar { width: 85px; height: 85px; border-radius: 50%; border: 3px solid #57F287; box-shadow: 0 0 20px rgba(87, 242, 135, 0.4); object-fit: cover; }
         .badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(87, 242, 135, 0.15); color: #57F287; padding: 6px 18px; border-radius: 50px; font-weight: 600; font-size: 14px; border: 1px solid rgba(87, 242, 135, 0.3); }
@@ -57,9 +60,10 @@ function startWebServer(client) {
         h1 { font-size: 26px; font-weight: 700; margin-top: 5px; background: linear-gradient(135deg, #ffffff, #93c5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         p.subtitle { color: #94a3b8; font-size: 15px; margin-top: 4px; }
         .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 25px 0; text-align: left; }
+        @media (min-width: 600px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
         .stat-item { background: #1c2035; padding: 14px 18px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); }
-        .stat-label { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
-        .stat-value { font-size: 17px; font-weight: 600; color: #f8fafc; }
+        .stat-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+        .stat-value { font-size: 16px; font-weight: 600; color: #f8fafc; }
         .features { text-align: left; background: #111320; padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.04); }
         .features h3 { font-size: 13px; color: #93c5fd; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         .feature-tags { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -73,7 +77,7 @@ function startWebServer(client) {
     <div class="card">
         <div class="header">
             <img class="avatar" src="${botAvatar}" alt="Bot Avatar">
-            <div class="badge"><div class="dot"></div> ออนไลน์พร้อมทำงาน 24 ชั่วโมง</div>
+            <div class="badge"><div class="dot"></div> ออนไลน์พร้อมทำงาน 24 ชั่วโมง • ${cmdCount} คำสั่ง Slash</div>
             <h1>Docomin Shop & Community Bot</h1>
             <p class="subtitle">ระบบร้านค้าครบวงจร • สต็อกผลปีศาจเรียลไทม์ • ปัญญาประดิษฐ์ AI</p>
         </div>
@@ -84,7 +88,11 @@ function startWebServer(client) {
                 <div class="stat-value">${botName}</div>
             </div>
             <div class="stat-item">
-                <div class="stat-label">⚡ ความเร็วตอบสนอง (Ping)</div>
+                <div class="stat-label">⚡ คำสั่งบอท (Slash Commands)</div>
+                <div class="stat-value" style="color: #57F287; font-weight: 700;">${cmdCount} คำสั่ง</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">📶 ความเร็วตอบสนอง (Ping)</div>
                 <div class="stat-value">${pingMs} ms</div>
             </div>
             <div class="stat-item">
@@ -93,29 +101,42 @@ function startWebServer(client) {
             </div>
             <div class="stat-item">
                 <div class="stat-label">🏠 เซิร์ฟเวอร์ที่ดูแล (Guilds)</div>
-                <div class="stat-value">${guildCount} เซิร์ฟเวอร์ (${userCount.toLocaleString()} สมาชิก)</div>
+                <div class="stat-value">${guildCount} เซิร์ฟเวอร์</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">👥 สมาชิกทั้งหมด (Users)</div>
+                <div class="stat-value">${userCount.toLocaleString()} สมาชิก</div>
             </div>
         </div>
 
         <div class="features">
-            <h3>ระบบที่เปิดทำงานเบื้องหลัง 24 ชั่วโมง (83 คำสั่ง)</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin-bottom: 0;">ระบบที่เปิดทำงานเบื้องหลัง 24 ชั่วโมง (${cmdCount} คำสั่ง)</h3>
+                <span style="font-size: 12px; background: rgba(87, 242, 135, 0.15); color: #57F287; padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(87, 242, 135, 0.3);">Cloud Server 24/7</span>
+            </div>
             <div class="feature-tags">
-                <span class="tag">🛒 Docomin Shop</span>
-                <span class="tag">💳 PromptPay EMVCo QR</span>
-                <span class="tag">⭐ Vouch & Reputation</span>
-                <span class="tag">🍎 Blox Fruits Stock (เรียลไทม์)</span>
-                <span class="tag">⚖️ Trade Calculator</span>
-                <span class="tag">🎙️ Voice Master</span>
+                <span class="tag">🛒 Docomin Shop & Services</span>
+                <span class="tag">💳 PromptPay QR & Slip Verification</span>
+                <span class="tag">👑 VIP Loyalty Program (ส่วนลดอัตโนมัติ)</span>
+                <span class="tag">📦 สต็อกคีย์ดิจิทัล Auto-Delivery</span>
+                <span class="tag">📢 Shop Broadcast & Flash Sale</span>
+                <span class="tag">🏷️ Dynamic Coupon System</span>
+                <span class="tag">📊 สรุปยอดขาย & Sales Summary</span>
+                <span class="tag">🍎 เฝ้าสต็อก Blox Fruits เรียลไทม์</span>
+                <span class="tag">⚖️ Trade Value Calculator</span>
+                <span class="tag">🎙️ Voice Master ห้องคุยส่วนตัว</span>
+                <span class="tag">🎫 Service Desk & Ticket Panel</span>
                 <span class="tag">💰 Economy & Role Shop</span>
-                <span class="tag">🛡️ Verification Gate</span>
-                <span class="tag">🌐 Web Uptime Keep-Alive</span>
-                <span class="tag">✨ Gemini 3.8 Flash AI</span>
+                <span class="tag">🛡️ Verification Gate & Blacklist Guard</span>
+                <span class="tag">💾 Auto Database Backup & Restore</span>
+                <span class="tag">🌐 Web Uptime Keep-Alive 24/7</span>
+                <span class="tag">✨ Gemini AI Server Management</span>
             </div>
         </div>
 
         <a class="ping-link" href="/healthz" target="_blank">🔍 ตรวจสอบ JSON Healthz Endpoint</a>
         <div class="footer">
-            Powered by Node.js & Discord.js v14 • Host on Render / Koyeb / Cloud 24/7
+            Powered by Node.js & Discord.js v14 • Host on Render Cloud 24/7 ($0/เดือน)
         </div>
     </div>
 </body>

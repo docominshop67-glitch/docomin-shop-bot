@@ -785,7 +785,8 @@ client.once('ready', async () => {
     uptime.start();
 
     // เริ่มต้นระบบ Web Server แสดง Dashboard และรองรับ Cloud Free Hosting 24/7 (Render / Koyeb)
-    startWebServer(client);
+    client.commandsCount = commands.length;
+    startWebServer(client, commands.length);
 
     // เริ่มต้นระบบมอนิเตอร์และแจ้งเตือนสต็อก Blox Fruits เบื้องหลัง
     startStockWatcher(client);

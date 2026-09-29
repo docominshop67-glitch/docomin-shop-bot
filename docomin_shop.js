@@ -209,16 +209,20 @@ function createPaymentActionRow(ticketChannelId = null) {
             .setLabel('📤 แนบสลิป / แจ้งโอน')
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-            .setCustomId(ticketChannelId ? `btn_pay_truemoney_angpao_${ticketChannelId}` : 'btn_pay_truemoney_angpao')
-            .setLabel('🧧 ส่งซองทรูมันนี่')
+            .setCustomId(ticketChannelId ? `btn_pay_coupon_${ticketChannelId}` : 'btn_pay_coupon')
+            .setLabel('🎟️ ใช้คูปองส่วนลด')
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-            .setCustomId('btn_pay_admin_setup')
-            .setLabel('⚙️ ตั้งค่าบัญชีรับเงิน')
+            .setCustomId(ticketChannelId ? `btn_pay_truemoney_angpao_${ticketChannelId}` : 'btn_pay_truemoney_angpao')
+            .setLabel('🧧 ส่งซองทรูมันนี่')
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId(ticketChannelId ? `btn_pay_call_staff_${ticketChannelId}` : 'btn_pay_call_staff')
             .setLabel('💬 ติดต่อแอดมิน')
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('btn_pay_admin_setup')
+            .setLabel('⚙️ ตั้งค่าบัญชี')
             .setStyle(ButtonStyle.Secondary)
     );
 }
@@ -310,6 +314,25 @@ function createAngpaoModal() {
                     .setPlaceholder('เช่น ชำระค่าไก่ตัน')
                     .setStyle(TextInputStyle.Short)
                     .setRequired(false)
+            )
+        );
+}
+
+/**
+ * สร้าง Modal ให้ลูกค้ากรอกโค้ดคูปองส่วนลด
+ */
+function createApplyCouponModal(ticketChannelId = '') {
+    return new ModalBuilder()
+        .setCustomId(`modal_apply_coupon_${ticketChannelId}`)
+        .setTitle('🎟️ ใช้คูปองส่วนลด — Docomin Shop')
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('coupon_code')
+                    .setLabel('ใส่โค้ดคูปองส่วนลด')
+                    .setPlaceholder('เช่น DOCOMIN10 หรือ WELCOME20')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
             )
         );
 }
@@ -524,6 +547,81 @@ function createReputationEmbed(sellerUser, stats) {
 
     embed.setFooter({ text: 'Docomin Shop Reputation System • โปร่งใส ตรวจสอบได้' });
     embed.setTimestamp();
+    return embed;
+}
+
+/**
+ * สร้าง Embed แสดงภาพรวมยอดขาย สถิติ และการวิเคราะห์ร้านค้า (Sales Analytics Dashboard)
+ */
+function createSalesSummaryEmbed(stats, vouchStats = null) {
+    const embed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('📊 รายงานสรุปยอดขาย & ประสิทธิภาพร้านค้า — Docomin Shop')
+        .setDescription('สรุปข้อมูลผลการดำเนินงาน ยอดขายคำสั่งซื้อ และสถิติความพึงพอใจของลูกค้า')
+        .setThumbnail('https://cdn-icons-png.flaticon.com/512/3135/3135706.png')
+        .addFields(
+            {
+                name: '💰 ยอดขายรวมทั้งหมด (Total Revenue)',
+                value: `\`\`\`fix\n฿${(stats.totalRevenue || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท\n\`\`\``,
+                inline: false
+            },
+            {
+                name: '📦 คำสั่งซื้อที่สำเร็จ',
+                value: `\`${stats.totalSalesCount || 0}\` ออเดอร์`,
+                inline: true
+            },
+            {
+                name: '👥 ลูกค้าทั้งหมด',
+                value: `\`${stats.uniqueCustomersCount || 0}\` คน`,
+                inline: true
+            },
+            {
+                name: '🎟️ ส่วนลดที่ให้ลูกค้า',
+                value: `\`฿${(stats.totalDiscount || 0).toLocaleString('th-TH')} บาท\` (${stats.couponsUsedCount || 0} ครั้ง)`,
+                inline: true
+            },
+            {
+                name: '📅 ยอดขายวันนี้ (24 ชม.)',
+                value: `\`฿${(stats.todayRevenue || 0).toLocaleString('th-TH')} บาท\``,
+                inline: true
+            },
+            {
+                name: '📈 ยอดขายสัปดาห์นี้ (7 วัน)',
+                value: `\`฿${(stats.weekRevenue || 0).toLocaleString('th-TH')} บาท\``,
+                inline: true
+            }
+        );
+
+    if (vouchStats && vouchStats.total > 0) {
+        embed.addFields({
+            name: '⭐ คะแนนรีวิวเฉลี่ย',
+            value: `\`${vouchStats.average} / 5.0\` ดาว (${vouchStats.total} รีวิว)`,
+            inline: true
+        });
+    }
+
+    if (stats.topProducts && stats.topProducts.length > 0) {
+        const topText = stats.topProducts.map((p, idx) => {
+            const medal = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][idx] || '•';
+            return `${medal} **${p.name}** — ขายได้ \`${p.count}\` ชิ้น (รวม \`฿${p.revenue.toLocaleString()}\` บาท)`;
+        }).join('\n');
+
+        embed.addFields({
+            name: '🏆 สินค้าขายดีที่สุด (Top 5 Best Sellers)',
+            value: topText,
+            inline: false
+        });
+    } else {
+        embed.addFields({
+            name: '🏆 สินค้าขายดีที่สุด',
+            value: '*ยังไม่มีข้อมูลสินค้าที่มียอดขาย*',
+            inline: false
+        });
+    }
+
+    embed.setFooter({ text: 'Docomin Shop Analytics • Real-time Business Intelligence' })
+        .setTimestamp();
+
     return embed;
 }
 
@@ -978,6 +1076,7 @@ module.exports = {
     createPaymentActionRow,
     createSetPaymentModal,
     createAngpaoModal,
+    createApplyCouponModal,
     createDeliverProductModal,
     createDeliveryEmbed,
     createVouchModal,
@@ -987,6 +1086,7 @@ module.exports = {
     renderProgressBar,
     createVouchEmbed,
     createReputationEmbed,
+    createSalesSummaryEmbed,
 
     // Product Catalog
     CATEGORY_NAMES,

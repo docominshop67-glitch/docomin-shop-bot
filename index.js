@@ -12,7 +12,8 @@ const {
     ChannelType,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle
+    TextInputStyle,
+    ActivityType
 } = require('discord.js');
 require('dotenv').config();
 
@@ -677,6 +678,50 @@ const commands = [
         .addStringOption(opt => opt.setName('prompt').setDescription('คำสั่งที่ต้องการให้ AI ปฏิบัติการ').setRequired(true)),
 
     new SlashCommandBuilder()
+        .setName('shop-broadcast')
+        .setDescription('บรอดแคสต์โปรโมชั่น Flash Sale หรือประกาศพิเศษพร้อมปุ่มสั่งซื้อทันที (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(opt => opt.setName('title').setDescription('หัวข้อโปรโมชั่น เช่น 🔥 FLASH SALE ลด 20% คืนนี้เท่านั้น!').setRequired(true))
+        .addStringOption(opt => opt.setName('description').setDescription('รายละเอียดโปรโมชั่น / เงื่อนไข').setRequired(true))
+        .addChannelOption(opt => opt.setName('channel').setDescription('ห้องที่จะส่งการ์ดประกาศ (เว้นว่างไว้คือส่งห้องนี้)').setRequired(false))
+        .addStringOption(opt => opt.setName('coupon_code').setDescription('โค้ดคูปองส่วนลดพิเศษที่จะแจกในโพสต์ (Optional)').setRequired(false))
+        .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูปภาพแบนเนอร์โปรโมชั่น (Optional)').setRequired(false))
+        .addStringOption(opt =>
+            opt.setName('ping')
+                .setDescription('การแท็กสมาชิก')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'ไม่มีการแท็ก (Silent)', value: 'none' },
+                    { name: '🔔 แท็ก @here (เฉพาะคนที่ออนไลน์)', value: 'here' },
+                    { name: '🚨 แท็ก @everyone (ทุกคน)', value: 'everyone' }
+                )
+        ),
+
+    new SlashCommandBuilder()
+        .setName('set-customer-role')
+        .setDescription('กำหนดยศพิเศษที่จะมอบให้ลูกค้าอัตโนมัติเมื่อซื้อสินค้าสำเร็จ (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addRoleOption(opt => opt.setName('role').setDescription('ยศที่จะมอบให้ลูกค้า เช่น @ลูกค้าประจำ หรือ @Verified Buyer').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('stock-add-keys')
+        .setDescription('เพิ่มชุดรหัส/คีย์/ไอดี เข้าสู่คลังสต็อกดิจิทัลอัตโนมัติ (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(opt => opt.setName('product_id').setDescription('รหัสสินค้า (เช่น BF-KIT-P หรือ ROBUX-100)').setRequired(true))
+        .addStringOption(opt => opt.setName('keys').setDescription('ชุดรหัส/คีย์ (คั่นด้วยเครื่องหมายจุลภาค , หรือเว้นวรรค)').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('db-backup')
+        .setDescription('ดาวน์โหลดและสำรองฐานข้อมูลร้านค้า (Backup database.json) ทันที (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('db-restore')
+        .setDescription('กู้คืนฐานข้อมูลร้านค้าจากไฟล์ JSON ที่สำรองไว้ (Admin)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addAttachmentOption(opt => opt.setName('file').setDescription('ไฟล์ database.json ที่ต้องการนำมากู้คืน').setRequired(true)),
+
+    new SlashCommandBuilder()
         .setName('help')
         .setDescription('ดูคำสั่งทั้งหมดของบอท')
 ];
@@ -744,6 +789,33 @@ client.once('ready', async () => {
 
     // เริ่มต้นระบบมอนิเตอร์และแจ้งเตือนสต็อก Blox Fruits เบื้องหลัง
     startStockWatcher(client);
+
+    // เริ่มต้นระบบ Dynamic Rotating Presence (สลับสถานะบอททุกๆ 20 วินาที)
+    const activities = [
+        () => ({ name: '🛒 Docomin Shop • /help', type: ActivityType.Watching }),
+        () => ({ name: '👑 สมาชิก VIP & ส่วนลดอัตโนมัติ', type: ActivityType.Playing }),
+        () => ({ name: '🍎 เฝ้าสต็อก Blox Fruits เรียลไทม์', type: ActivityType.Competing }),
+        () => {
+            const totalMembers = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
+            return { name: `🛡️ ดูแล ${totalMembers.toLocaleString()} สมาชิก`, type: ActivityType.Watching };
+        },
+        () => ({ name: '⚡ ออนไลน์ 24/7 บน Cloud Server', type: ActivityType.Playing })
+    ];
+    let activityIdx = 0;
+    const updatePresence = () => {
+        try {
+            const act = activities[activityIdx % activities.length]();
+            client.user.setPresence({
+                activities: [act],
+                status: 'online'
+            });
+            activityIdx++;
+        } catch (err) {
+            // ignore presence errors
+        }
+    };
+    updatePresence();
+    setInterval(updatePresence, 20000);
 
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     const cmdData = commands.map(cmd => cmd.toJSON());
@@ -1275,7 +1347,34 @@ client.on('interactionCreate', async interaction => {
             ticket.finalAmount = finalAmount;
             db.setOrderTicket(channelId, ticket);
 
-            return interaction.editReply('✅ ส่งมอบสินค้าให้ลูกค้าเรียบร้อยแล้ว ทั้งในตั๋วและ DM พร้อมตัดสต็อกและบันทึกยอดขายอัตโนมัติ!');
+            // มอบยศลูกค้าประจำอัตโนมัติ (Verified Customer Role)
+            const custRoleId = db.getCustomerRole(interaction.guildId);
+            if (custRoleId && targetChannel) {
+                try {
+                    const member = await interaction.guild.members.fetch(ticket.userId).catch(() => null);
+                    if (member && !member.roles.cache.has(custRoleId)) {
+                        await member.roles.add(custRoleId);
+                        await targetChannel.send(`🎖️ ยินดีด้วย <@${ticket.userId}>! คุณได้รับยศลูกค้า <@&${custRoleId}> ประจำเซิร์ฟเวอร์เรียบร้อยแล้ว ✨`).catch(() => {});
+                    }
+                } catch (rErr) {
+                    // ignore role assign error
+                }
+            }
+
+            // ส่งไฟล์สำรองฐานข้อมูลอัตโนมัติไปยังห้อง Log (Auto Cloud Backup Snapshot)
+            const logChannelId = db.getSetting('logs_' + interaction.guildId);
+            if (logChannelId) {
+                const logCh = interaction.guild.channels.cache.get(logChannelId);
+                if (logCh && logCh.isTextBased()) {
+                    const bBuffer = Buffer.from(db.backupDB(), 'utf-8');
+                    await logCh.send({
+                        content: `💾 **Cloud Database Snapshot Auto-Backup** (บันทึกอัตโนมัติเมื่อจัดส่งออเดอร์ #${channelId} สำเร็จ)`,
+                        files: [{ attachment: bBuffer, name: `database-backup-${Date.now()}.json` }]
+                    }).catch(() => {});
+                }
+            }
+
+            return interaction.editReply('✅ ส่งมอบสินค้าให้ลูกค้าเรียบร้อยแล้ว ทั้งในตั๋วและ DM พร้อมตัดสต็อก, มอบยศลูกค้า และสำรองฐานข้อมูลอัตโนมัติ!');
         }
 
         if (interaction.customId.startsWith('modal_apply_coupon_')) {
@@ -3457,6 +3556,137 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: [unblEmbed] });
         }
 
+        // --- Shop Promotion & Broadcast System ---
+        if (commandName === 'shop-broadcast') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะบรอดแคสต์ได้', ephemeral: true });
+            }
+            const title = interaction.options.getString('title');
+            const description = interaction.options.getString('description');
+            const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+            const couponCode = interaction.options.getString('coupon_code');
+            const imageUrl = interaction.options.getString('image_url');
+            const ping = interaction.options.getString('ping') || 'none';
+
+            if (!targetChannel.isTextBased()) {
+                return interaction.reply({ content: '❌ กรุณาเลือกห้องข้อความ (Text Channel)', ephemeral: true });
+            }
+
+            const embed = docominShop.createBroadcastEmbed({
+                title,
+                description,
+                couponCode,
+                imageUrl,
+                author: interaction.user
+            });
+            const row = docominShop.createBroadcastActionRow();
+
+            let pingContent = null;
+            if (ping === 'everyone') pingContent = '@everyone';
+            else if (ping === 'here') pingContent = '@here';
+
+            await targetChannel.send({
+                content: pingContent,
+                embeds: [embed],
+                components: [row]
+            });
+
+            return interaction.reply({
+                content: `📢 บรอดแคสต์โปรโมชั่นไปยังห้อง <#${targetChannel.id}> สำเร็จเรียบร้อยแล้ว!`,
+                ephemeral: true
+            });
+        }
+
+        // --- Verified Customer Role System ---
+        if (commandName === 'set-customer-role') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะตั้งค่ายศได้', ephemeral: true });
+            }
+            const role = interaction.options.getRole('role');
+            db.setCustomerRole(interaction.guildId, role.id);
+            return interaction.reply({
+                content: `✅ ตั้งค่ายศลูกค้าพิเศษเป็น **@${role.name}** เรียบร้อยแล้ว! เมื่อลูกค้าซื้อสินค้าสำเร็จ บอทจะมอบยศนี้ให้อัตโนมัติทันที ✨`,
+                ephemeral: true
+            });
+        }
+
+        // --- Digital Key Stock Vault ---
+        if (commandName === 'stock-add-keys') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะเพิ่มสต็อกคีย์ได้', ephemeral: true });
+            }
+            const pid = interaction.options.getString('product_id').trim().toUpperCase();
+            const keysInput = interaction.options.getString('keys');
+            const keys = keysInput.split(/[\n,]/).map(k => k.trim()).filter(Boolean);
+
+            if (keys.length === 0) {
+                return interaction.reply({ content: '❌ ไม่พบข้อมูลรหัสคีย์ที่ระบุ', ephemeral: true });
+            }
+
+            const result = db.addProductKeys(pid, keys);
+            const products = db.getProducts(interaction.guildId);
+            const foundProduct = products.find(p => p.id.toUpperCase() === pid);
+            if (foundProduct) {
+                db.updateProductStock(interaction.guildId, foundProduct.id, result.total);
+            }
+
+            return interaction.reply({
+                content: `✅ เพิ่มรหัสเข้าคลังสต็อกดิจิทัลของสินค้า \`${pid}\` สำเร็จ!\n• เพิ่มใหม่: **+${result.added}** ชุด\n• ยอดคีย์คงเหลือทั้งหมดในคลัง: **${result.total}** ชุด`,
+                ephemeral: true
+            });
+        }
+
+        // --- Cloud Database Backup & Restore ---
+        if (commandName === 'db-backup') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะสำรองข้อมูลได้', ephemeral: true });
+            }
+            await interaction.deferReply({ ephemeral: true });
+            const jsonStr = db.backupDB();
+            const buffer = Buffer.from(jsonStr, 'utf-8');
+            const fileName = `database-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+
+            const stats = db.getSalesAnalytics(interaction.guildId);
+            const embed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('💾 สำรองฐานข้อมูลร้านค้าสำเร็จ (Database Backup)')
+                .setDescription('ไฟล์ฐานข้อมูลนี้บรรจุข้อมูลสินค้า, ประวัติยอดขาย, ลูกค้า VIP, คูปอง, และการตั้งค่าทั้งหมดของเซิร์ฟเวอร์\nคุณสามารถเก็บไฟล์นี้ไว้ และใช้คำสั่ง `/db-restore` เพื่อกู้คืนได้ตลอดเวลา')
+                .addFields(
+                    { name: '📊 ยอดขายสะสม', value: `฿${(stats.totalRevenue || 0).toLocaleString()} บาท`, inline: true },
+                    { name: '📦 ออเดอร์ทั้งหมด', value: `${(stats.totalOrders || 0).toLocaleString()} บิล`, inline: true },
+                    { name: '📁 ขนาดไฟล์', value: `${(buffer.length / 1024).toFixed(2)} KB`, inline: true }
+                )
+                .setTimestamp();
+
+            return interaction.editReply({
+                embeds: [embed],
+                files: [{ attachment: buffer, name: fileName }]
+            });
+        }
+
+        if (commandName === 'db-restore') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะกู้คืนข้อมูลได้', ephemeral: true });
+            }
+            const file = interaction.options.getAttachment('file');
+            if (!file.name.endsWith('.json')) {
+                return interaction.reply({ content: '❌ กรุณาแนบไฟล์ JSON เท่านั้น (เช่น database-backup-xxx.json)', ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const response = await fetch(file.url);
+                const text = await response.text();
+                const res = db.restoreDB(text);
+                if (!res.success) {
+                    return interaction.editReply(`❌ กู้คืนข้อมูลไม่สำเร็จ: ${res.error}`);
+                }
+                return interaction.editReply('🎉 **กู้คืนฐานข้อมูลสำเร็จเรียบร้อยแล้ว! 100%** ข้อมูลทั้งหมดถูกนำกลับมาใช้งานทันที');
+            } catch (err) {
+                return interaction.editReply(`❌ เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์: ${err.message}`);
+            }
+        }
+
         // --- Help ---
         if (commandName === 'help') {
             const embed = new EmbedBuilder()
@@ -3464,7 +3694,7 @@ client.on('interactionCreate', async interaction => {
                 .setTitle('📖 คู่มือและระบบทั้งหมดของบอท (All-in-One Dashboard)')
                 .addFields(
                     { name: '🎛️ ศูนย์ควบคุม & AI จัดการเซิร์ฟเวอร์ (Master Panel & AI Admin)', value: '`/panel` หรือ `/admin-panel` เปิดแผงควบคุมร้านค้าและความปลอดภัยครบวงจร\n`/sync` บังคับซิงค์และอัปเดตคำสั่งใหม่เข้าเซิร์ฟเวอร์ทันที\n`/ai-admin <คำสั่ง>` ให้ Gemini AI ช่วยจัดการเซิร์ฟเวอร์อัตโนมัติ (หรือแท็ก @Bot)' },
-                    { name: '🛒 Docomin Shop (ระบบร้านค้า, ลูกค้า & สถิติ)', value: '`/setup-docomin-shop` ติดตั้งระบบร้านค้าครบวงจรใน 1 วินาที (ป้องกันห้องซ้ำ 100%)\n`/vip` เช็กระดับ VIP และส่วนลดพิเศษของคุณ\n`/my-orders` ดูประวัติการสั่งซื้อของคุณ\n`/order-status <id>` เช็กสถานะคำสั่งซื้อ\n`/notify-restock <id>` ลงชื่อรอรับการแจ้งเตือนเมื่อของเติมสต็อก\n`/vouch` ส่งรีวิวและบันทึกเครดิต\n`/reputation` ดูคะแนนเครดิตร้านค้า\n`/products` ดูแคตตาล็อกสินค้า\n`/payment`, `/pay-qr` ชำระเงิน/สร้าง QR พร้อมเพย์\n`/setup-order-ticket` ติดตั้งแผงตั๋วสั่งซื้อ\n`/coupon-create`, `/coupon-check`, `/coupon-list`, `/coupon-delete` จัดการคูปอง\n`/sales-summary` รายงานสรุปยอดขายและสินค้าขายดี\n`/blacklist-check`, `/blacklist-add`, `/blacklist-remove` ระบบบัญชีดำป้องกันมิจฉาชีพ\n`/product-add`, `/product-stock`, `/restock-alert` จัดการสต็อก' },
+                    { name: '🛒 Docomin Shop (ระบบร้านค้า, ลูกค้า & สถิติ)', value: '`/setup-docomin-shop` ติดตั้งระบบร้านค้าครบวงจรใน 1 วินาที (ป้องกันห้องซ้ำ 100%)\n`/vip` เช็กระดับ VIP และส่วนลดพิเศษของคุณ\n`/my-orders` ดูประวัติการสั่งซื้อของคุณ\n`/order-status <id>` เช็กสถานะคำสั่งซื้อ\n`/notify-restock <id>` ลงชื่อรอรับการแจ้งเตือนเมื่อของเติมสต็อก\n`/vouch` ส่งรีวิวและบันทึกเครดิต\n`/reputation` ดูคะแนนเครดิตร้านค้า\n`/products` ดูแคตตาล็อกสินค้า\n`/payment`, `/pay-qr` ชำระเงิน/สร้าง QR พร้อมเพย์\n`/setup-order-ticket` ติดตั้งแผงตั๋วสั่งซื้อ\n`/coupon-create`, `/coupon-check`, `/coupon-list`, `/coupon-delete` จัดการคูปอง\n`/sales-summary` รายงานสรุปยอดขายและสินค้าขายดี\n`/shop-broadcast` บรอดแคสต์โปรโมชั่น Flash Sale พร้อมปุ่มซื้อ\n`/set-customer-role` กำหนดยศลูกค้าอัตโนมัติเมื่อซื้อสำเร็จ\n`/stock-add-keys` เพิ่มรหัส/คีย์เข้าสต็อกดิจิทัลอัตโนมัติ\n`/db-backup`, `/db-restore` สำรองและกู้คืนฐานข้อมูลบน Cloud\n`/blacklist-check`, `/blacklist-add`, `/blacklist-remove` ระบบบัญชีดำป้องกันมิจฉาชีพ\n`/product-add`, `/product-stock`, `/restock-alert` จัดการสต็อก' },
                     { name: '🍎 Blox Fruits Real-Time Stock & Alert', value: '`/bloxfruits-stock` ดูสต็อกผลปีศาจแบบเรียลไทม์พร้อมรูปของแท้\n`/bloxfruits-alert` เลือกผลที่ต้องการให้แจ้งเตือน\n`/bloxfruits-channel` ตั้งห้องส่งสต็อกอัตโนมัติ' },
                     { name: '⚖️ Blox Fruits Trade & Value Calculator', value: '`/bf-value <ผล>` ดูมูลค่าตลาดจริง Demand (1-10) และแนวโน้มราคา\n`/bf-trade <ผลคุณ> <ผลเขา>` วิเคราะห์การเทรด คำนวณกำไร/ขาดทุนเป็น %' },
                     { name: '🎙️ Voice Master (ห้องเสียงส่วนตัว)', value: '`/setup-voicemaster` ติดตั้งระบบห้องเสียงส่วนตัวอัตโนมัติพร้อมแผงควบคุม (ล็อก, ซ่อน, จำกัดคน, เตะสมาชิก)' },

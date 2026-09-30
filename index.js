@@ -631,22 +631,20 @@ const commands = [
         .addStringOption(opt => opt.setName('order_id').setDescription('รหัสออเดอร์ หรือ รหัสห้องตั๋ว').setRequired(true)),
 
     new SlashCommandBuilder()
-        .setName('blacklist-check')
-        .setDescription('ตรวจสอบสถานะความปลอดภัยและประวัติบัญชีดำของผู้ใช้')
-        .addUserOption(opt => opt.setName('user').setDescription('เลือกผู้ใช้ที่ต้องการตรวจสอบ').setRequired(true)),
-
-    new SlashCommandBuilder()
-        .setName('blacklist-add')
-        .setDescription('เพิ่มผู้ใช้เข้าสู่บัญชีดำ ป้องกันการสั่งซื้อและการหลอกลวง (Admin)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addUserOption(opt => opt.setName('user').setDescription('ผู้ใช้ที่ต้องการขึ้นบัญชีดำ').setRequired(true))
-        .addStringOption(opt => opt.setName('reason').setDescription('สาเหตุที่ขึ้นบัญชีดำ').setRequired(true)),
-
-    new SlashCommandBuilder()
-        .setName('blacklist-remove')
-        .setDescription('ปลดผู้ใช้ออกจากบัญชีดำ (Admin)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addUserOption(opt => opt.setName('user').setDescription('ผู้ใช้ที่ต้องการปลดออกจากบัญชีดำ').setRequired(true)),
+        .setName('blacklist')
+        .setDescription('ระบบจัดการบัญชีดำ (Blacklist Guard) ตรวจสอบ/เพิ่ม/ปลดรายชื่อ')
+        .addStringOption(opt =>
+            opt.setName('action')
+                .setDescription('การกระทำที่ต้องการ')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🔍 ตรวจสอบประวัติ (Check)', value: 'check' },
+                    { name: '🚨 เพิ่มเข้าบัญชีดำ (Add)', value: 'add' },
+                    { name: '🟢 ปลดออกจากบัญชีดำ (Remove)', value: 'remove' }
+                )
+        )
+        .addUserOption(opt => opt.setName('user').setDescription('เลือกผู้ใช้ที่ต้องการตรวจสอบหรือจัดการ').setRequired(true))
+        .addStringOption(opt => opt.setName('reason').setDescription('สาเหตุที่ขึ้นบัญชีดำ (จำเป็นเมื่อเลือก Add)').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('restock-alert')
@@ -659,11 +657,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('panel')
         .setDescription('เปิดแผงควบคุมเซิร์ฟเวอร์และร้านค้าครบวงจร (Master Control Panel)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    new SlashCommandBuilder()
-        .setName('admin-panel')
-        .setDescription('เปิดแผงควบคุมเซิร์ฟเวอร์และร้านค้า (Alias ของ /panel)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
@@ -711,15 +704,19 @@ const commands = [
         .addStringOption(opt => opt.setName('keys').setDescription('ชุดรหัส/คีย์ (คั่นด้วยเครื่องหมายจุลภาค , หรือเว้นวรรค)').setRequired(true)),
 
     new SlashCommandBuilder()
-        .setName('db-backup')
-        .setDescription('ดาวน์โหลดและสำรองฐานข้อมูลร้านค้า (Backup database.json) ทันที (Admin)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    new SlashCommandBuilder()
-        .setName('db-restore')
-        .setDescription('กู้คืนฐานข้อมูลร้านค้าจากไฟล์ JSON ที่สำรองไว้ (Admin)')
+        .setName('db')
+        .setDescription('ระบบสำรองและกู้คืนฐานข้อมูลร้านค้า (Cloud Database Backup & Restore)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addAttachmentOption(opt => opt.setName('file').setDescription('ไฟล์ database.json ที่ต้องการนำมากู้คืน').setRequired(true)),
+        .addStringOption(opt =>
+            opt.setName('action')
+                .setDescription('การกระทำที่ต้องการ')
+                .setRequired(true)
+                .addChoices(
+                    { name: '💾 สำรองฐานข้อมูล (Backup)', value: 'backup' },
+                    { name: '📥 กู้คืนฐานข้อมูล (Restore)', value: 'restore' }
+                )
+        )
+        .addAttachmentOption(opt => opt.setName('file').setDescription('ไฟล์ database.json ที่ต้องการนำมากู้คืน (จำเป็นเมื่อเลือก Restore)').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('help')
@@ -3496,65 +3493,68 @@ client.on('interactionCreate', async interaction => {
         }
 
         // --- Blacklist Management ---
-        if (commandName === 'blacklist-check') {
+        // --- Blacklist Management ---
+        if (commandName === 'blacklist' || commandName === 'blacklist-check' || commandName === 'blacklist-add' || commandName === 'blacklist-remove') {
+            const action = interaction.options.getString('action') || (commandName === 'blacklist-add' ? 'add' : (commandName === 'blacklist-remove' ? 'remove' : 'check'));
             const targetUser = interaction.options.getUser('user');
-            const info = db.getBlacklist(targetUser.id);
-            if (!info) {
-                const cleanEmbed = new EmbedBuilder()
+
+            if (action === 'check') {
+                const info = db.getBlacklist(targetUser.id);
+                if (!info) {
+                    const cleanEmbed = new EmbedBuilder()
+                        .setColor(0x57F287)
+                        .setTitle(`✅ สมาชิกปลอดภัย: ${targetUser.tag}`)
+                        .setDescription(`ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในรายชื่อบัญชีดำ (Blacklist) มีประวัติขาวสะอาด สามารถทำธุรกรรมได้ตามปกติ ✨`)
+                        .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+                        .setTimestamp();
+                    return interaction.reply({ embeds: [cleanEmbed] });
+                }
+
+                const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
+                return interaction.reply({ embeds: [blEmbed] });
+            }
+
+            if (action === 'add') {
+                if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะจัดการบัญชีดำได้', ephemeral: true });
+                }
+                const reason = interaction.options.getString('reason') || 'ไม่มีการระบุสาเหตุ';
+
+                if (targetUser.id === interaction.user.id) {
+                    return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำตัวเองได้', ephemeral: true });
+                }
+                if (targetUser.bot) {
+                    return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำบอทได้', ephemeral: true });
+                }
+
+                const info = db.addBlacklist(targetUser.id, reason, interaction.user.id);
+                const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
+
+                return interaction.reply({
+                    content: `🚨 **ขึ้นบัญชีดำเรียบร้อยแล้ว:** <@${targetUser.id}> จะถูกตรวจจับความปลอดภัยและมีสัญญาณเตือนแดงเมื่อเปิดตั๋ว`,
+                    embeds: [blEmbed]
+                });
+            }
+
+            if (action === 'remove') {
+                if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะปลดบัญชีดำได้', ephemeral: true });
+                }
+                const removed = db.removeBlacklist(targetUser.id);
+
+                if (!removed) {
+                    return interaction.reply({ content: `ℹ️ ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในบัญชีดำอยู่แล้ว`, ephemeral: true });
+                }
+
+                const unblEmbed = new EmbedBuilder()
                     .setColor(0x57F287)
-                    .setTitle(`✅ สมาชิกปลอดภัย: ${targetUser.tag}`)
-                    .setDescription(`ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในรายชื่อบัญชีดำ (Blacklist) มีประวัติขาวสะอาด สามารถทำธุรกรรมได้ตามปกติ ✨`)
+                    .setTitle('🟢 ปลดออกจากบัญชีดำสำเร็จ (Blacklist Removed)')
+                    .setDescription(`ผู้ใช้ <@${targetUser.id}> ได้รับการปลดออกจากบัญชีดำโดย <@${interaction.user.id}> เรียบร้อยแล้ว`)
                     .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
                     .setTimestamp();
-                return interaction.reply({ embeds: [cleanEmbed] });
+
+                return interaction.reply({ embeds: [unblEmbed] });
             }
-
-            const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
-            return interaction.reply({ embeds: [blEmbed] });
-        }
-
-        if (commandName === 'blacklist-add') {
-            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะจัดการบัญชีดำได้', ephemeral: true });
-            }
-            const targetUser = interaction.options.getUser('user');
-            const reason = interaction.options.getString('reason');
-
-            if (targetUser.id === interaction.user.id) {
-                return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำตัวเองได้', ephemeral: true });
-            }
-            if (targetUser.bot) {
-                return interaction.reply({ content: '❌ ไม่สามารถขึ้นบัญชีดำบอทได้', ephemeral: true });
-            }
-
-            const info = db.addBlacklist(targetUser.id, reason, interaction.user.id);
-            const blEmbed = docominShop.createBlacklistEmbed(targetUser, info);
-
-            return interaction.reply({
-                content: `🚨 **ขึ้นบัญชีดำเรียบร้อยแล้ว:** <@${targetUser.id}> จะถูกตรวจจับความปลอดภัยและมีสัญญาณเตือนแดงเมื่อเปิดตั๋ว`,
-                embeds: [blEmbed]
-            });
-        }
-
-        if (commandName === 'blacklist-remove') {
-            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะปลดบัญชีดำได้', ephemeral: true });
-            }
-            const targetUser = interaction.options.getUser('user');
-            const removed = db.removeBlacklist(targetUser.id);
-
-            if (!removed) {
-                return interaction.reply({ content: `ℹ️ ผู้ใช้ <@${targetUser.id}> ไม่อยู่ในบัญชีดำอยู่แล้ว`, ephemeral: true });
-            }
-
-            const unblEmbed = new EmbedBuilder()
-                .setColor(0x57F287)
-                .setTitle('🟢 ปลดออกจากบัญชีดำสำเร็จ (Blacklist Removed)')
-                .setDescription(`ผู้ใช้ <@${targetUser.id}> ได้รับการปลดออกจากบัญชีดำโดย <@${interaction.user.id}> เรียบร้อยแล้ว`)
-                .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-                .setTimestamp();
-
-            return interaction.reply({ embeds: [unblEmbed] });
         }
 
         // --- Shop Promotion & Broadcast System ---
@@ -3638,53 +3638,55 @@ client.on('interactionCreate', async interaction => {
         }
 
         // --- Cloud Database Backup & Restore ---
-        if (commandName === 'db-backup') {
+        // --- Cloud Database Backup & Restore ---
+        if (commandName === 'db' || commandName === 'db-backup' || commandName === 'db-restore') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะสำรองข้อมูลได้', ephemeral: true });
+                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะจัดการฐานข้อมูลได้', ephemeral: true });
             }
-            await interaction.deferReply({ ephemeral: true });
-            const jsonStr = db.backupDB();
-            const buffer = Buffer.from(jsonStr, 'utf-8');
-            const fileName = `database-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            const action = interaction.options.getString('action') || (commandName === 'db-restore' ? 'restore' : 'backup');
 
-            const stats = db.getSalesAnalytics(interaction.guildId);
-            const embed = new EmbedBuilder()
-                .setColor(0x57F287)
-                .setTitle('💾 สำรองฐานข้อมูลร้านค้าสำเร็จ (Database Backup)')
-                .setDescription('ไฟล์ฐานข้อมูลนี้บรรจุข้อมูลสินค้า, ประวัติยอดขาย, ลูกค้า VIP, คูปอง, และการตั้งค่าทั้งหมดของเซิร์ฟเวอร์\nคุณสามารถเก็บไฟล์นี้ไว้ และใช้คำสั่ง `/db-restore` เพื่อกู้คืนได้ตลอดเวลา')
-                .addFields(
-                    { name: '📊 ยอดขายสะสม', value: `฿${(stats.totalRevenue || 0).toLocaleString()} บาท`, inline: true },
-                    { name: '📦 ออเดอร์ทั้งหมด', value: `${(stats.totalOrders || 0).toLocaleString()} บิล`, inline: true },
-                    { name: '📁 ขนาดไฟล์', value: `${(buffer.length / 1024).toFixed(2)} KB`, inline: true }
-                )
-                .setTimestamp();
+            if (action === 'backup') {
+                await interaction.deferReply({ ephemeral: true });
+                const jsonStr = db.backupDB();
+                const buffer = Buffer.from(jsonStr, 'utf-8');
+                const fileName = `database-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
 
-            return interaction.editReply({
-                embeds: [embed],
-                files: [{ attachment: buffer, name: fileName }]
-            });
-        }
+                const stats = db.getSalesAnalytics(interaction.guildId);
+                const embed = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle('💾 สำรองฐานข้อมูลร้านค้าสำเร็จ (Database Backup)')
+                    .setDescription('ไฟล์ฐานข้อมูลนี้บรรจุข้อมูลสินค้า, ประวัติยอดขาย, ลูกค้า VIP, คูปอง, และการตั้งค่าทั้งหมดของเซิร์ฟเวอร์\nคุณสามารถเก็บไฟล์นี้ไว้ และใช้คำสั่ง `/db action:กู้คืนฐานข้อมูล` เพื่อกู้คืนได้ตลอดเวลา')
+                    .addFields(
+                        { name: '📊 ยอดขายสะสม', value: `฿${(stats.totalRevenue || 0).toLocaleString()} บาท`, inline: true },
+                        { name: '📦 ออเดอร์ทั้งหมด', value: `${(stats.totalOrders || 0).toLocaleString()} บิล`, inline: true },
+                        { name: '📁 ขนาดไฟล์', value: `${(buffer.length / 1024).toFixed(2)} KB`, inline: true }
+                    )
+                    .setTimestamp();
 
-        if (commandName === 'db-restore') {
-            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ คุณต้องมีสิทธิ์ Administrator จึงจะกู้คืนข้อมูลได้', ephemeral: true });
-            }
-            const file = interaction.options.getAttachment('file');
-            if (!file.name.endsWith('.json')) {
-                return interaction.reply({ content: '❌ กรุณาแนบไฟล์ JSON เท่านั้น (เช่น database-backup-xxx.json)', ephemeral: true });
+                return interaction.editReply({
+                    embeds: [embed],
+                    files: [{ attachment: buffer, name: fileName }]
+                });
             }
 
-            await interaction.deferReply({ ephemeral: true });
-            try {
-                const response = await fetch(file.url);
-                const text = await response.text();
-                const res = db.restoreDB(text);
-                if (!res.success) {
-                    return interaction.editReply(`❌ กู้คืนข้อมูลไม่สำเร็จ: ${res.error}`);
+            if (action === 'restore') {
+                const file = interaction.options.getAttachment('file');
+                if (!file || !file.name.endsWith('.json')) {
+                    return interaction.reply({ content: '❌ กรุณาแนบไฟล์ JSON สำหรับกู้คืนข้อมูล (เช่น database-backup-xxx.json)', ephemeral: true });
                 }
-                return interaction.editReply('🎉 **กู้คืนฐานข้อมูลสำเร็จเรียบร้อยแล้ว! 100%** ข้อมูลทั้งหมดถูกนำกลับมาใช้งานทันที');
-            } catch (err) {
-                return interaction.editReply(`❌ เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์: ${err.message}`);
+
+                await interaction.deferReply({ ephemeral: true });
+                try {
+                    const response = await fetch(file.url);
+                    const text = await response.text();
+                    const res = db.restoreDB(text);
+                    if (!res.success) {
+                        return interaction.editReply(`❌ กู้คืนข้อมูลไม่สำเร็จ: ${res.error}`);
+                    }
+                    return interaction.editReply('🎉 **กู้คืนฐานข้อมูลสำเร็จเรียบร้อยแล้ว! 100%** ข้อมูลทั้งหมดถูกนำกลับมาใช้งานทันที');
+                } catch (err) {
+                    return interaction.editReply(`❌ เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์: ${err.message}`);
+                }
             }
         }
 

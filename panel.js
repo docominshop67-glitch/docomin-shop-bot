@@ -29,28 +29,31 @@ function createPanelEmbedAndRows(guild, client) {
     const products = db.getProducts(guild.id);
     const inStockCount = products.filter(p => p.stock > 0).length;
     const payment = db.getPaymentConfig(guild.id);
-    const isPaymentConfigured = !!payment?.promptpay;
+    const hasRealPayment = !!payment?.promptpay && payment.promptpay !== '0800000000';
     const shopSettings = db.getShopSettings(guild.id);
     const automodConfig = db.getAutoMod(guild.id);
     const salesStats = db.getSalesAnalytics ? db.getSalesAnalytics(guild.id) : { totalRevenue: 0, totalSalesCount: 0 };
 
+    const totalCommands = (client && client.commandsCount) ? client.commandsCount : 102;
     const memoryUsageMB = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
-    const ping = client.ws.ping;
-    const uptimeStr = formatUptime(client.uptime);
+    const ping = client.ws ? client.ws.ping : 0;
+    const uptimeStr = formatUptime(client.uptime || (process.uptime() * 1000));
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🎛️ แผงควบคุมเซิร์ฟเวอร์ & ร้านค้า — Docomin Master Control Panel')
-        .setDescription(`ยินดีต้อนรับสู่ศูนย์ควบคุมระบบกลาง จัดการร้านค้า ความปลอดภัย และคำสั่งบอทได้ในที่เดียว\n\n` +
+        .setDescription(
             `👑 **เซิร์ฟเวอร์:** **${guild.name}**\n` +
-            `👥 **สมาชิกทั้งหมด:** \`${guild.memberCount}\` คน | 📶 **Ping:** \`${ping}ms\` | ⏱️ **Uptime:** \`${uptimeStr}\``)
+            `👥 **สมาชิกทั้งหมด:** \`${guild.memberCount}\` คน | ⚡ **คำสั่งบอท:** \`${totalCommands} คำสั่ง (พร้อมใช้งาน)\`\n` +
+            `📶 **Ping:** \`${ping}ms\` | ⏱️ **Uptime:** \`${uptimeStr}\``
+        )
         .addFields(
             {
                 name: '🛒 สถานะร้านค้า (Docomin Shop)',
                 value: `• สินค้าในระบบ: **${products.length}** รายการ (พร้อมส่ง: **${inStockCount}** รายการ)\n` +
                     `• ยอดขายสะสม: **฿${(salesStats.totalRevenue || 0).toLocaleString()}** บาท (\`${salesStats.totalSalesCount || 0}\` ออเดอร์)\n` +
-                    `• ช่องทางชำระเงิน: ${isPaymentConfigured ? `✅ พร้อมเพย์ (\`${payment.promptpay}\`)` : '⚠️ ยังไม่ได้ตั้งค่า (/set-payment)'}\n` +
-                    `• ห้องรีวิว: ${shopSettings?.reviewId ? `<#${shopSettings.reviewId}>` : 'ยังไม่ได้ระบุ'}`,
+                    `• ช่องทางชำระเงิน: ${hasRealPayment ? `✅ พร้อมเพย์ (\`${payment.promptpay}\`)` : '⚠️ ยังไม่ได้ตั้งค่าบัญชีจริง (กดปุ่ม ⚙️ ตั้งค่าบัญชีรับเงิน)'}\n` +
+                    `• ห้องรีวิว: ${shopSettings?.reviewId ? `<#${shopSettings.reviewId}>` : 'ยังไม่ได้ระบุ (ใช้ /set-review)'}`,
                 inline: false
             },
             {
@@ -58,17 +61,17 @@ function createPanelEmbedAndRows(guild, client) {
                 value: `• ป้องกันลิงก์เชิญ (Anti-Invite): **${automodConfig.antiInvite ? '🟢 เปิดใช้งาน' : '🔴 ปิด'}**\n` +
                     `• ป้องกันส่งข้อความรัว (Anti-Spam): **${automodConfig.antiSpam ? '🟢 เปิดใช้งาน' : '🔴 ปิด'}**\n` +
                     `• ป้องกันห้องซ้ำซ้อน (Duplicate Guard): **🟢 เปิดใช้งาน 100%**`,
-                inline: true
+                inline: false
             },
             {
                 name: '🤖 ผู้ช่วย AI (Gemini AI Admin)',
                 value: `• สถานะ: **🟢 พร้อมรับคำสั่ง**\n` +
-                    `• ฟังก์ชัน: สั่งลบข้อความ, ล็อกห้อง, สร้างห้อง, ประกาศ, สรุปสถานะ ด้วยภาษาไทย`,
-                inline: true
+                    `• ความสามารถ: สั่งลบข้อความ, ล็อกห้อง, สร้างห้อง, ประกาศ, สรุปสถานะ ด้วยภาษาไทย`,
+                inline: false
             },
             {
                 name: '⚡ ควบคุมด่วน (Quick Actions)',
-                value: `เลือกเมนูด้านล่าง หรือกดปุ่มด้านล่างเพื่อสั่งการทันทีโดยไม่ต้องจำคำสั่งยาวๆ`,
+                value: `เลือกเมนูหรือกดปุ่มด้านล่างเพื่อสั่งการทันที หรือกด **[⚡ ซิงค์ 102 คำสั่ง]** เพื่ออัปเดตคำสั่งใหม่เข้าดิสคอร์ด`,
                 inline: false
             }
         )
@@ -107,7 +110,7 @@ function createPanelEmbedAndRows(guild, client) {
                 .setEmoji('⚙️'),
             new StringSelectMenuOptionBuilder()
                 .setLabel('🔄 บังคับอัปเดตคำสั่ง Slash ทันที (Force Sync)')
-                .setDescription('แก้ปัญหาคำสั่งขึ้นไม่ครบ ซิงค์คำสั่งใหม่ทั้งหมดเข้าเซิร์ฟเวอร์ทันที')
+                .setDescription(`แก้ปัญหาคำสั่งขึ้นไม่ครบ ซิงค์คำสั่งใหม่ทั้งหมด ${totalCommands} คำสั่งเข้าเซิร์ฟเวอร์ทันที`)
                 .setValue('section_sync')
                 .setEmoji('🔄')
         );
@@ -150,7 +153,7 @@ function createPanelEmbedAndRows(guild, client) {
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId('btn_panel_force_sync')
-            .setLabel('⚡ ซิงค์คำสั่งทันที')
+            .setLabel(`⚡ ซิงค์ ${totalCommands} คำสั่ง`)
             .setStyle(ButtonStyle.Primary)
     );
 
